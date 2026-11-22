@@ -7,6 +7,7 @@
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
   const nowISO = () => new Date().toISOString();
   let sb = null;
+  const RECOVERY = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
   const chk = (r) => { if (r.error) throw new Error(r.error.message); return r.data; };
 
   async function compress(file, max = 1200, q = 0.8) {
@@ -51,6 +52,9 @@
       if (!LIVE) { db(); return; }
       if (!window.supabase) await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
       sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY);
+      Store.recovery = RECOVERY;
+      sb.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") { Store.recovery = true; if (Store._onRecovery) Store._onRecovery(); } });
+      if (RECOVERY) await sb.auth.getSession();
     },
     onChange(cb, ms = 15000) {
       if (!LIVE) window.addEventListener("storage", (e) => { if (e.key === KEY) { mem = null; cb(); } });
@@ -128,6 +132,11 @@
     },
     async signIn(email, password) { if (!LIVE) throw new Error("DEMO"); chk(await sb.auth.signInWithPassword({ email, password })); },
     async signUp(email, password, meta) { if (!LIVE) throw new Error("DEMO"); return chk(await sb.auth.signUp({ email, password, options: { data: meta } })); },
+    async resetPassword(email) {
+      if (!LIVE) throw new Error("مش متاح في الوضع التجريبي");
+      chk(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }));
+    },
+    async setNewPassword(pw) { chk(await sb.auth.updateUser({ password: pw })); Store.recovery = false; history.replaceState(null, "", location.pathname); },
     async signOut() { if (LIVE) await sb.auth.signOut(); else sess.set(null); },
     demoLogin(user) { sess.set(user); },
     async profiles() { return LIVE ? chk(await sb.from("profiles").select("*").order("created_at", { ascending: false })) : db().profiles; },

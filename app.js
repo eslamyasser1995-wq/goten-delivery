@@ -114,7 +114,7 @@
     if (!S.me) return `<div class="wrap"><div class="h2">حسابي</div>
       <div class="card"><b>🏪 دخول المحلات والشركات</b><p class="mut">سجّل محلك علشان بياناتك تتحفظ، وتشوف كل شحناتك وكشف حساب بالمبالغ اللي اتحصّلت.</p>
         ${Store.live ? `${field("em", "البريد الإلكتروني", "", "email", 'autocomplete="username"')}${field("pw", "كلمة المرور", "", "password", 'autocomplete="current-password"')}
-        <button class="btn block" id="inBtn">دخول</button>
+        <button class="btn block" id="inBtn">دخول</button><button class="btn ghost block" style="margin-top:8px" data-forgot="1">نسيت كلمة السر؟</button>
         <details style="margin-top:12px"><summary><b>محل جديد؟ سجّل هنا</b></summary>${field("bn", "اسم المحل *", "")}<div class="row2">${field("fn", "اسمك", "")}${field("bp", "الهاتف *", "", "tel", 'inputmode="numeric" maxlength="8"')}</div>
           <label class="f"><span>منطقة الاستلام</span><select class="in" id="ba">${areaOptions("")}</select></label>${field("bd", "عنوان الاستلام", "")}<p class="mut">اكتب الإيميل وكلمة السر فوق، وبعدين:</p><button class="btn tq block" id="upBtn">إنشاء حساب المحل</button></details>`
         : `<span class="demo-tag">وضع تجريبي</span><button class="btn block" style="margin-top:8px" id="demoM">🏪 دخول كمحل تجريبي</button>`}</div></div>`;
@@ -168,7 +168,7 @@
     await loadList(); render();
   }
   (async () => {
-    try { await Store.init(); await boot(); } catch (e) { $("app").innerHTML = `<div class="empty"><div class="e">⚠️</div>${esc(e.message)}</div>`; return; }
+    try { await Store.init(); await boot(); Store._onRecovery = () => UI.recover(() => boot()); if (Store.recovery) Store._onRecovery(); } catch (e) { $("app").innerHTML = `<div class="empty"><div class="e">⚠️</div>${esc(e.message)}</div>`; return; }
     const t = new URLSearchParams(location.search).get("track"); if (t) openTrack(t);
     if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   })();

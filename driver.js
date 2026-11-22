@@ -11,7 +11,7 @@
     let demoList = "";
     if (!Store.live) { const ps = (await Store.profiles()).filter((p) => p.role === "driver"); demoList = ps.map((p) => `<button class="btn ghost block" style="margin:6px 0" data-demo="${p.id}">🛵 ${esc(p.full_name)}</button>`).join(""); }
     $("app").innerHTML = `<div class="login"><div class="brand" style="justify-content:center;color:var(--navy);font-size:22px;margin-bottom:6px">${LOGO}<span>مناديب ${esc(D.name)}</span></div>${msg ? `<div class="notice">${msg}</div>` : ""}
-      ${Store.live ? `<div class="card"><label class="f"><span>البريد الإلكتروني</span><input class="in" id="em" type="email" autocomplete="username"></label><label class="f"><span>كلمة المرور</span><input class="in" id="pw" type="password" autocomplete="current-password"></label><button class="btn block" id="inBtn">دخول</button></div>
+      ${Store.live ? `<div class="card"><label class="f"><span>البريد الإلكتروني</span><input class="in" id="em" type="email" autocomplete="username"></label><label class="f"><span>كلمة المرور</span><input class="in" id="pw" type="password" autocomplete="current-password"></label><button class="btn block" id="inBtn">دخول</button><button class="btn ghost block" style="margin-top:8px" data-forgot="1">نسيت كلمة السر؟</button></div>
         <details class="card"><summary><b>مندوب جديد؟ سجّل هنا</b></summary><label class="f"><span>الاسم</span><input class="in" id="nn"></label><label class="f"><span>رقم الهاتف</span><input class="in" id="np" type="tel" inputmode="numeric" maxlength="8" placeholder="5xxxxxxx"></label><p class="mut">اكتب البريد وكلمة السر فوق وبعدين اضغط:</p><button class="btn tq block" id="upBtn">إنشاء حساب</button></details>`
       : `<div class="card"><span class="demo-tag">وضع تجريبي</span><p class="mut">اختار المندوب:</p>${demoList}</div>`}${D.me ? "" : ""}<button class="btn ghost block" id="outBtn2" style="${msg ? "" : "display:none"}">خروج</button></div>`;
     const o2 = $("outBtn2"); if (o2) o2.onclick = async () => { await Store.signOut(); loginView(); };
@@ -106,5 +106,5 @@
     if (me.role !== "driver") return loginView(me.role === "pending" ? "⏳ حسابك قيد المراجعة – الإدارة لازم توافق الأول." : "الحساب ده مش حساب مندوب.");
     D.me = me; await refresh();
   }
-  (async () => { try { await Store.init(); await boot(); } catch (e) { toast(e.message, "err"); } Store.onChange(() => { if (D.me) refresh().catch(() => {}); }, 20000); if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {}); })();
+  (async () => { try { await Store.init(); await boot(); Store._onRecovery = () => UI.recover(() => boot()); if (Store.recovery) Store._onRecovery(); } catch (e) { toast(e.message, "err"); } Store.onChange(() => { if (D.me) refresh().catch(() => {}); }, 20000); if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {}); })();
 })();

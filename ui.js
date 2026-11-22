@@ -117,5 +117,33 @@
     el._map = map; setTimeout(() => map.invalidateSize(), 200);
     return map;
   }
-  window.UI = { DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
+  // نسيت كلمة السر
+  function forgot(email) {
+    sheet(`<h3>🔑 نسيت كلمة السر</h3><p class="mut">اكتب إيميلك وهنبعتلك لينك تعمل منه كلمة سر جديدة.</p>
+      <input class="in" id="fgEm" type="email" autocomplete="username" placeholder="example@gmail.com" value="${esc(email || "")}">
+      <button class="btn block" style="margin-top:10px" id="fgBtn">ابعت اللينك</button>`, () => {
+      document.getElementById("fgBtn").onclick = async (e) => {
+        const em = document.getElementById("fgEm").value.trim(); if (!/.+@.+\..+/.test(em)) return toast("اكتب إيميل صحيح", "err");
+        e.target.disabled = true;
+        try { await Store.resetPassword(em); closeSheet(); sheet(`<div class="empty" style="padding:16px 0"><div class="e">📧</div><h3>بعتنالك لينك</h3><p>افتح الإيميل <b>${esc(em)}</b> واضغط على اللينك (ممكن يكون في Spam). اللينك هيرجعك هنا تكتب كلمة السر الجديدة.</p></div>`); }
+        catch (x) { e.target.disabled = false; toast(/rate|security/i.test(x.message) ? "استنى دقيقة وجرّب تاني" : x.message, "err"); }
+      };
+    });
+  }
+  function recover(done) {
+    sheet(`<h3>🔑 كلمة سر جديدة</h3><p class="mut">اكتب كلمة السر الجديدة (6 حروف على الأقل).</p>
+      <input class="in" id="np1" type="password" autocomplete="new-password" placeholder="كلمة السر الجديدة">
+      <input class="in" id="np2" type="password" autocomplete="new-password" placeholder="اكتبها تاني" style="margin-top:8px">
+      <button class="btn tq block" style="margin-top:10px" id="npBtn">حفظ</button>`, (w) => {
+      w.querySelectorAll("[data-close]").forEach((x) => x.removeAttribute("data-close")); const xb = w.querySelector(".sheet-x"); if (xb) xb.remove();
+      document.getElementById("npBtn").onclick = async (e) => {
+        const a = document.getElementById("np1").value, b = document.getElementById("np2").value;
+        if (a.length < 6) return toast("كلمة السر 6 حروف على الأقل", "err"); if (a !== b) return toast("الكلمتين مش زي بعض", "err");
+        e.target.disabled = true;
+        try { await Store.setNewPassword(a); closeSheet(); toast("✅ اتغيّرت كلمة السر"); if (done) done(); } catch (x) { e.target.disabled = false; toast(/expired|invalid/i.test(x.message) ? "اللينك انتهى – اطلب لينك جديد" : x.message, "err"); }
+      };
+    });
+  }
+  document.addEventListener("click", (e) => { if (e.target.closest("[data-forgot]")) { const em = document.getElementById("em"); forgot(em ? em.value.trim() : ""); } });
+  window.UI = { forgot, recover, DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
 })();

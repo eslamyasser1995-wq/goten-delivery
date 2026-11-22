@@ -27,7 +27,7 @@
   // ---------- الدخول ----------
   function loginView(msg) {
     $("app").innerHTML = `<div class="login"><div class="brand" style="justify-content:center;color:var(--navy);font-size:22px;margin-bottom:6px">${LOGO}<span>لوحة التحكم</span></div>${msg ? `<div class="notice">${msg}</div>` : ""}
-      ${Store.live ? `<div class="card"><label class="f"><span>البريد الإلكتروني</span><input class="in" id="em" type="email" autocomplete="username"></label><label class="f"><span>كلمة المرور</span><input class="in" id="pw" type="password" autocomplete="current-password"></label><button class="btn block" id="inBtn">دخول</button></div>
+      ${Store.live ? `<div class="card"><label class="f"><span>البريد الإلكتروني</span><input class="in" id="em" type="email" autocomplete="username"></label><label class="f"><span>كلمة المرور</span><input class="in" id="pw" type="password" autocomplete="current-password"></label><button class="btn block" id="inBtn">دخول</button><button class="btn ghost block" style="margin-top:8px" data-forgot="1">نسيت كلمة السر؟</button></div>
         <details class="card"><summary><b>أول مرة؟ اعمل حساب الأدمن</b></summary><p class="mut">اكتب الإيميل وكلمة السر فوق واضغط، وبعدها شغّل سطر الأدمن في Supabase.</p><button class="btn tq block" id="upBtn">إنشاء حساب</button></details>`
         : `<div class="card"><span class="demo-tag">وضع تجريبي</span><label class="f"><span>الرقم السري (1234)</span><input class="in" id="pin" type="password" inputmode="numeric"></label><button class="btn block" id="pinBtn">دخول</button></div>`}
       ${msg ? `<button class="btn ghost block" id="outBtn">خروج</button>` : ""}</div>`;
@@ -223,5 +223,5 @@
     if (me.role !== "admin") return loginView("الحساب ده مش أدمن. لو ده حسابك، شغّل سطر الأدمن في Supabase (موجود آخر ملف schema.sql).");
     await load();
   }
-  (async () => { try { await Store.init(); await boot(); } catch (e) { toast(e.message, "err"); } Store.onChange(async () => { const me = await Store.me().catch(() => null); if (me && me.role === "admin") load().catch(() => {}); }, 15000); })();
+  (async () => { try { await Store.init(); await boot(); Store._onRecovery = () => UI.recover(() => boot()); if (Store.recovery) Store._onRecovery(); } catch (e) { toast(e.message, "err"); } Store.onChange(async () => { const me = await Store.me().catch(() => null); if (me && me.role === "admin") load().catch(() => {}); }, 15000); })();
 })();
