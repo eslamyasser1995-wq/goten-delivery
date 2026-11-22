@@ -1,8 +1,5 @@
-// إعدادات Goten Delivery
-// حط هنا رابط ومفتاح مشروع Supabase الجديد (Project Settings > API)
-// لو سبتهم فاضيين التطبيق يشتغل "وضع تجريبي" على الجهاز بس
 window.APP_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://yjlzxxmragubaqnkjcdt.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_0XyXnSHNLS2GVA9SJeFLBw_dmTipn1v",
   DEMO_ADMIN_PIN: "1234"
 };
