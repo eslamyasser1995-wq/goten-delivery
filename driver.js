@@ -2,7 +2,7 @@
 (function () {
   const { esc, money, toast, fmtDate, LOGO, num, sheet, closeSheet, DST } = UI;
   const $ = (id) => document.getElementById(id);
-  const D = { me: null, list: [], setl: [], tab: "active", known: null, name: "Goten Delivery", watch: null, lastPing: 0, sharing: false };
+  const D = { set: {}, lastLoc: null, me: null, list: [], setl: [], tab: "active", known: null, name: "Goten Delivery", watch: null, lastPing: 0, sharing: false };
   const collectOf = (d) => num(d.cod_amount) + (d.fee_payer === "receiver" ? num(d.fee) : 0);
   const today = (d) => d && new Date(d).toDateString() === new Date().toDateString();
   const maps = (area, addr) => "https://maps.google.com/?q=" + encodeURIComponent((addr ? addr + " " : "") + area + " الكويت");
@@ -36,19 +36,51 @@
       <div style="margin-top:8px">${c ? `<span class="pill cod">💵 حصّل ${money(c)}</span>` : `<span class="pill">مدفوع – مفيش تحصيل</span>`}</div>
       ${act ? `<div class="acts">${act}</div>` : ""}</div>`;
   }
+  const offerLeft = (d) => Math.round((new Date(d.offered_at).getTime() + (num(D.set.offer_seconds) || 60) * 1000 - Date.now()) / 1000);
+  function offerCard(d) {
+    const c = collectOf(d), pz = UI.ZLL[d.pickup_zone], loc = D.lastLoc;
+    const dist = loc && pz ? UI.km(loc, pz).toFixed(1) + " كم منك" : "";
+    return `<div class="dcard" style="border-color:#f59e0b;background:#fffbeb;box-shadow:0 0 0 3px #fde68a"><div class="hd"><b>🔔 شحنة جديدة #${d.no}</b><span class="st" style="background:#f59e0b" data-cd="${d.id}">${offerLeft(d)} ث</span></div>
+      <div class="ad">🟦 استلام: <b>${esc(d.pickup_area)}</b>${dist ? ` <span class="mut">(${dist})</span>` : ""}<br>🟩 تسليم: <b>${esc(d.drop_area)}</b><br>${c ? `💵 تحصيل ${money(c)}` : "مدفوع – مفيش تحصيل"}${d.package ? ` · 📦 ${esc(d.package)}` : ""}</div>
+      <div class="row2"><button class="btn green" data-acc="${d.id}">✅ قبول</button><button class="btn ghost" data-rej="${d.id}">❌ رفض</button></div></div>`;
+  }
+  function wallet() {
+    const mine = D.list.filter((d) => d.driver_id === D.me.id), del = mine.filter((d) => d.status === "delivered");
+    const earn = (arr) => arr.reduce((a, d) => a + num(d.driver_earning), 0);
+    const since = (days) => del.filter((d) => Date.now() - new Date(d.delivered_at) < days * 864e5);
+    const col = del.reduce((a, d) => a + collectOf(d), 0), hand = D.setl.filter((x) => x.kind === "driver_handover").reduce((a, x) => a + num(x.amount), 0);
+    const paid = D.setl.filter((x) => x.kind === "driver_payout").reduce((a, x) => a + num(x.amount), 0);
+    const rated = mine.filter((d) => d.rating);
+    const todayDel = del.filter((d) => today(d.delivered_at));
+    return { del, todayDel, todayEarn: earn(todayDel), week: earn(since(7)), month: earn(since(30)), total: earn(del), col, hand, paid, cash: col - hand, bal: col - hand - earn(del) + paid,
+      avg: rated.length ? Math.round((rated.reduce((a, d) => a + d.rating, 0) / rated.length) * 10) / 10 : null, rated };
+  }
+  function walletView(W) {
+    return `<div class="stats"><div class="stat"><span class="mut">أرباح النهارده (${W.todayDel.length} شحنة)</span><b style="color:#16a34a">${money(W.todayEarn)}</b></div><div class="stat"><span class="mut">آخر 7 أيام</span><b>${money(W.week)}</b></div>
+      <div class="stat"><span class="mut">آخر 30 يوم</span><b>${money(W.month)}</b></div><div class="stat"><span class="mut">تقييمك</span><b>${W.avg ? `⭐ ${W.avg}` : "—"}</b><small class="mut">${W.rated.length} تقييم</small></div></div>
+      <div class="card"><b>💼 حسابك مع الشركة</b>
+        <div class="line"><span>💵 كاش حصّلته من الزباين</span><b>${money(W.col)}</b></div>
+        <div class="line"><span>− سلّمته للشركة</span><b>${money(W.hand)}</b></div>
+        <div class="line"><span>− أرباحك (${W.del.length} شحنة)</span><b>${money(W.total)}</b></div>
+        <div class="line"><span>+ اتصرفلك أرباح</span><b>${money(W.paid)}</b></div>
+        <div class="line total"><span>${W.bal >= 0 ? "عليك للشركة" : "ليك عند الشركة"}</span><span style="color:${W.bal > 0.0005 ? "#b45309" : "#16a34a"}">${money(Math.abs(W.bal))}</span></div></div>
+      <div class="card"><b>آخر التقييمات</b>${W.rated.slice(0, 8).map((d) => `<div class="line"><span>#${d.no}${d.rating_note ? ` – ${esc(d.rating_note)}` : ""}</span><span>${UI.stars(d.rating, 14)}</span></div>`).join("") || '<p class="mut">لسه مفيش تقييمات.</p>'}</div>
+      <div class="card"><b>آخر الحركات مع الشركة</b>${D.setl.filter((x) => x.kind !== "merchant_payout").slice(0, 10).map((x) => `<div class="line"><span>${x.kind === "driver_payout" ? "💸 اتصرفلك" : "💵 سلّمت"} ${fmtDate(x.created_at)}${x.note ? " – " + esc(x.note) : ""}</span><b>${money(x.amount)}</b></div>`).join("") || '<p class="mut">لسه مفيش.</p>'}</div>`;
+  }
   function render() {
-    const active = D.list.filter((d) => ["assigned", "picked_up"].includes(d.status));
-    const done = D.list.filter((d) => ["delivered", "failed"].includes(d.status) && today(d.delivered_at || d.updated_at));
-    const collected = D.list.filter((d) => d.status === "delivered").reduce((s, d) => s + collectOf(d), 0);
-    const handed = D.setl.filter((s) => s.kind === "driver_handover").reduce((s, x) => s + num(x.amount), 0);
-    const todayCash = D.list.filter((d) => d.status === "delivered" && today(d.delivered_at)).reduce((s, d) => s + collectOf(d), 0);
+    const mine = D.list.filter((d) => d.driver_id === D.me.id);
+    const offers = D.list.filter((d) => d.status === "new" && d.offered_to === D.me.id && offerLeft(d) > 0);
+    const active = mine.filter((d) => ["assigned", "picked_up"].includes(d.status));
+    const done = mine.filter((d) => ["delivered", "failed"].includes(d.status) && today(d.delivered_at || d.updated_at));
+    const W = wallet();
     const list = D.tab === "active" ? active : done;
-    $("app").innerHTML = `<header class="top"><div class="wrap"><div class="row"><div class="brand">${LOGO}<div>مناديب ${esc(D.name)}<small>${esc(D.me.full_name || "")}</small></div></div><div class="sp"></div><button class="chip-btn" id="pushBtn">${UI.pushState() === "granted" ? "🔔" : "🔕 فعّل"}</button><button class="chip-btn" id="outBtn">خروج</button></div>
-      <div class="tabs"><button class="${D.tab === "active" ? "on" : ""}" data-tab="active">الحالية (${active.length})</button><button class="${D.tab === "done" ? "on" : ""}" data-tab="done">خلصت النهارده (${done.length})</button></div></div></header>
+    $("app").innerHTML = `<header class="top"><div class="wrap"><div class="row"><div class="brand">${LOGO}<div>مناديب ${esc(D.name)}<small>${esc(D.me.full_name || "")}${W.avg ? ` · ⭐ ${W.avg}` : ""}</small></div></div><div class="sp"></div><button class="chip-btn" id="pushBtn">${UI.pushState() === "granted" ? "🔔" : "🔕 فعّل"}</button><button class="chip-btn" id="outBtn">خروج</button></div>
+      <div class="tabs"><button class="${D.tab === "active" ? "on" : ""}" data-tab="active">الحالية (${active.length})</button><button class="${D.tab === "done" ? "on" : ""}" data-tab="done">النهارده (${done.length})</button><button class="${D.tab === "wallet" ? "on" : ""}" data-tab="wallet">💰 محفظتي</button></div></div></header>
       <main><div class="wrap">
-        <div class="card" style="display:flex;align-items:center;gap:10px;margin-top:12px"><div style="flex:1"><b>📍 مشاركة موقعي</b><div class="mut" style="font-size:12px">الإدارة والزبون يشوفوا مكانك وانت شغال. خلّي الصفحة مفتوحة.</div></div><button class="btn sm ${D.sharing ? "green" : "ghost"}" id="locBtn">${D.sharing ? "شغّال ✓" : "شغّل"}</button></div>
-        <div class="stats"><div class="stat"><span class="mut">كاش النهارده</span><b>${money(todayCash)}</b></div><div class="stat"><span class="mut">الكاش اللي معاك</span><b style="color:#b45309">${money(collected - handed)}</b></div></div>
-        ${list.length ? list.map(card).join("") : `<div class="empty"><div class="e">${D.tab === "active" ? "😴" : "📭"}</div>${D.tab === "active" ? "مفيش شحنات عليك دلوقتي" : "لسه مفيش"}</div>`}
+        <div class="card" style="display:flex;align-items:center;gap:10px;margin-top:12px;${D.sharing ? "background:#ecfdf5" : ""}"><div style="flex:1"><b>${D.sharing ? "🟢 متاح – بتستقبل شحنات" : "⚪ مش متاح"}</b><div class="mut" style="font-size:12px">${D.sharing ? "الشحنات القريبة منك هتتعرض عليك. خلّي الصفحة مفتوحة." : "شغّل علشان الشحنات تتوزع عليك تلقائياً، والزبون يشوف مكانك."}</div></div><button class="btn sm ${D.sharing ? "green" : "tq"}" id="locBtn">${D.sharing ? "متاح ✓" : "ابدأ الشغل"}</button></div>
+        ${offers.map(offerCard).join("")}
+        ${D.tab === "wallet" ? walletView(W) : `<div class="stats"><div class="stat"><span class="mut">أرباحك النهارده</span><b style="color:#16a34a">${money(W.todayEarn)}</b></div><div class="stat"><span class="mut">الكاش اللي معاك</span><b style="color:#b45309">${money(W.cash)}</b></div></div>
+        ${list.length ? list.map(card).join("") : `<div class="empty"><div class="e">${D.tab === "active" ? "😴" : "📭"}</div>${D.tab === "active" ? (D.sharing ? "مستني شحنات… أول ما تتعرض عليك هتسمع صوت" : "مفيش شحنات عليك دلوقتي") : "لسه مفيش"}</div>`}`}
       </div></main>`;
     $("pushBtn").onclick = async () => { try { await UI.enablePush((x) => Store.savePush(x)); toast("✅ هيجيلك إشعار لما تتعيّن عليك شحنة"); render(); } catch (e) { toast(/save_push/.test(e.message) ? "الإشعارات لسه مش متفعّلة من الإدارة" : e.message, "err"); } };
     $("outBtn").onclick = async () => { stopLoc(); await Store.signOut(); D.me = null; loginView(); };
@@ -59,7 +91,8 @@
     if (!navigator.geolocation) return toast("الجهاز مش بيدعم الموقع", "err");
     D.watch = navigator.geolocation.watchPosition((p) => {
       if (!D.sharing) { D.sharing = true; render(); toast("📍 موقعك بيتشارك"); }
-      if (Date.now() - D.lastPing > 25000) { D.lastPing = Date.now(); Store.driverPing(p.coords.latitude, p.coords.longitude).catch(() => {}); }
+      D.lastLoc = [p.coords.latitude, p.coords.longitude];
+      if (Date.now() - D.lastPing > 25000) { D.lastPing = Date.now(); Store.driverPing(p.coords.latitude, p.coords.longitude).then(() => refresh()).catch(() => {}); }
     }, (e) => { toast(e.code === 1 ? "اسمح للتطبيق بالموقع من الإعدادات" : "تعذر تحديد الموقع", "err"); stopLoc(); }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
   }
   function stopLoc() { if (D.watch != null) navigator.geolocation.clearWatch(D.watch); D.watch = null; D.sharing = false; if (D.me) render(); }
@@ -87,25 +120,34 @@
   }
 
   document.addEventListener("click", async (e) => {
-    const el = e.target.closest("[data-demo],[data-go],[data-tab],[data-done],[data-fail]"); if (!el) return;
+    const el = e.target.closest("[data-demo],[data-go],[data-tab],[data-done],[data-fail],[data-acc],[data-rej]"); if (!el) return;
+    if (el.dataset.acc || el.dataset.rej) {
+      el.disabled = true;
+      try { await Store.driverRespond(el.dataset.acc || el.dataset.rej, !!el.dataset.acc); toast(el.dataset.acc ? "✅ الشحنة بقت عليك – روح للاستلام" : "اترفضت"); D.tab = "active"; }
+      catch (err) { toast(String(err.message).includes("OFFER_GONE") ? "العرض خلص وقته أو راح لمندوب تاني" : err.message, "err"); }
+      await refresh(); return;
+    }
     if (el.dataset.demo) { const p = (await Store.profiles()).find((x) => x.id === el.dataset.demo); Store.demoLogin({ id: p.id, role: "driver", full_name: p.full_name, phone: p.phone }); boot(); }
     else if (el.dataset.tab) { D.tab = el.dataset.tab; render(); }
     else if (el.dataset.done) doneSheet(el.dataset.done);
     else if (el.dataset.fail) failSheet(el.dataset.fail);
     else if (el.dataset.go) { const [id, st] = el.dataset.go.split(":"); el.disabled = true; try { await Store.driverUpdate(id, st); toast("بالتوفيق 🛵 – روح للمستلم"); await refresh(); } catch (err) { toast(err.message, "err"); el.disabled = false; } }
   });
+  function beep() { try { const c = new (window.AudioContext || window.webkitAudioContext)(); [0, 250, 500].forEach((t) => { const o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = 988; g.gain.value = 0.25; o.start(c.currentTime + t / 1000); o.stop(c.currentTime + t / 1000 + 0.18); }); setTimeout(() => c.close(), 1200); } catch (e) {} }
   async function refresh() {
+    if (D.sharing) await Store.dispatchTick();
     [D.list, D.setl] = await Promise.all([Store.driverDeliveries(), Store.settlements()]);
-    const ids = new Set(D.list.map((o) => o.id));
-    if (D.known && D.list.some((o) => !D.known.has(o.id))) { toast("🔔 شحنة جديدة عليك"); try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {} }
-    D.known = ids; if (!document.getElementById("sheet")) render();
+    const keys = new Set(D.list.map((o) => o.id + ":" + (o.offered_to === D.me.id ? "o" : o.driver_id === D.me.id ? "m" : "")));
+    if (D.known && [...keys].some((k) => !D.known.has(k) && !k.endsWith(":"))) { toast("🔔 شحنة جديدة عليك"); beep(); try { navigator.vibrate && navigator.vibrate([300, 100, 300, 100, 300]); } catch (e) {} }
+    D.known = keys; if (!document.getElementById("sheet")) render();
   }
   async function boot() {
-    try { const s = await Store.settings(); D.name = (s && s.company_name) || D.name; document.title = "مناديب " + D.name; } catch (e) {}
+    try { const s = await Store.settings(); D.set = s || {}; D.name = (s && s.company_name) || D.name; document.title = "مناديب " + D.name; } catch (e) {}
     const me = await Store.me();
     if (!me) return loginView();
     if (me.role !== "driver") return loginView(me.role === "pending" ? "⏳ حسابك قيد المراجعة – الإدارة لازم توافق الأول." : "الحساب ده مش حساب مندوب.");
     D.me = me; await refresh();
   }
-  (async () => { try { await Store.init(); await boot(); Store._onRecovery = () => UI.recover(() => boot()); if (Store.recovery) Store._onRecovery(); } catch (e) { toast(e.message, "err"); } Store.onChange(() => { if (D.me) refresh().catch(() => {}); }, 20000); if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {}); })();
+  (async () => { try { await Store.init(); await boot(); Store._onRecovery = () => UI.recover(() => boot()); if (Store.recovery) Store._onRecovery(); } catch (e) { toast(e.message, "err"); } Store.onChange(() => { if (D.me) refresh().catch(() => {}); }, 10000);
+    setInterval(() => { let gone = false; document.querySelectorAll("[data-cd]").forEach((el) => { const d = D.list.find((x) => x.id === el.dataset.cd); const l = d ? offerLeft(d) : 0; el.textContent = Math.max(0, l) + " ث"; if (l <= 0) gone = true; }); if (gone && !document.getElementById("sheet")) refresh().catch(() => {}); }, 1000); if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {}); })();
 })();

@@ -26,7 +26,7 @@
     const zones = Object.keys(UI.AREAS), prices = [];
     zones.forEach((a) => zones.forEach((b) => prices.push({ from_zone: a, to_zone: b, price: a === b ? 1 : 1.5 })));
     return {
-      settings: { company_name: "Goten Delivery", tagline: "توصيل سريع لكل مناطق الكويت", is_open: true, whatsapp: "", notice: "نسخة تجريبية – البيانات على هذا الجهاز فقط" },
+      settings: { company_name: "Goten Delivery", tagline: "توصيل سريع لكل مناطق الكويت", is_open: true, whatsapp: "", notice: "نسخة تجريبية – البيانات على هذا الجهاز فقط", auto_dispatch: true, offer_seconds: 60, max_active: 3, driver_pay_type: "fixed", driver_pay: 0.5 },
       prices, deliveries: [], settlements: [], locations: [], nextNo: 1001,
       profiles: [
         { id: "d1", full_name: "سالم (مندوب تجريبي)", phone: "96599990001", role: "driver" },
@@ -43,6 +43,25 @@
     const z1 = UI.zoneOf(a1), z2 = UI.zoneOf(a2); if (!z1 || !z2) throw new Error("BAD_AREA");
     const p = db().prices.find((x) => (x.from_zone === z1 && x.to_zone === z2)) || db().prices.find((x) => x.from_zone === z2 && x.to_zone === z1);
     if (!p) throw new Error("NO_PRICE"); return { z1, z2, fee: Number(p.price) };
+  }
+  const SET = (k, def) => { const v = db().settings[k]; return v == null ? def : v; };
+  const activeOf = (pid) => db().deliveries.filter((x) => x.driver_id === pid && ["assigned", "picked_up"].includes(x.status)).length;
+  function demoDispatch(id) {
+    const d = db(), x = d.deliveries.find((y) => y.id === id); if (!x || x.status !== "new" || x.driver_id) return;
+    if (!SET("auto_dispatch", true)) { x.offered_to = null; x.offered_at = null; return; }
+    const pz = UI.ZLL[x.pickup_zone] || UI.ZLL["العاصمة"];
+    const cand = d.profiles.filter((p) => p.role === "driver").map((p) => ({ p, l: d.locations.find((l) => l.driver_id === p.id) }))
+      .filter(({ p, l }) => l && Date.now() - new Date(l.updated_at) < 15 * 60e3 && !(x.declined || []).includes(p.id) && activeOf(p.id) < SET("max_active", 3) && !d.deliveries.some((y) => y.offered_to === p.id && y.status === "new" && y.id !== id))
+      .sort((a, b) => UI.km([a.l.lat, a.l.lng], pz) - UI.km([b.l.lat, b.l.lng], pz) || activeOf(a.p.id) - activeOf(b.p.id));
+    x.offered_to = cand.length ? cand[0].p.id : null; x.offered_at = cand.length ? nowISO() : null;
+  }
+  function demoTick() {
+    const d = db(); if (!SET("auto_dispatch", true)) return;
+    d.deliveries.filter((x) => x.status === "new" && !x.driver_id && (!x.offered_to || Date.now() - new Date(x.offered_at) > SET("offer_seconds", 60) * 1000)).forEach((x) => {
+      if (x.offered_to) { x.declined = [...(x.declined || []), x.offered_to]; x.offered_to = null; }
+      demoDispatch(x.id);
+    });
+    persist();
   }
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("تعذر تحميل مكتبة Supabase – تأكد من الإنترنت")); document.head.appendChild(s); }); }
 
@@ -82,7 +101,7 @@
       const { z1, z2, fee } = demoPrice(p.pickup_area, p.drop_area);
       const me = sess.get();
       const row = { ...p, id: uid(), no: d.nextNo++, merchant_id: me && me.role === "merchant" ? me.id : null, pickup_zone: z1, drop_zone: z2, fee, cod_amount: Number(p.cod_amount || 0), fee_payer: p.fee_payer === "receiver" ? "receiver" : "sender", status: "new", driver_id: null, created_at: nowISO(), updated_at: nowISO() };
-      d.deliveries.unshift(row); persist();
+      d.deliveries.unshift(row); demoDispatch(row.id); persist();
       return { id: row.id, no: row.no, fee };
     },
     async trackDelivery(id) {
@@ -90,7 +109,8 @@
       const d = db(), x = d.deliveries.find((y) => y.id === id); if (!x) return null;
       const dr = d.profiles.find((p) => p.id === x.driver_id), loc = d.locations.find((l) => l.driver_id === x.driver_id);
       const live = ["assigned", "picked_up"].includes(x.status);
-      return { ...x, driver_name: dr && dr.full_name, driver_phone: dr && dr.phone, lat: live && loc ? loc.lat : null, lng: live && loc ? loc.lng : null, loc_at: live && loc ? loc.updated_at : null };
+      const rs = d.deliveries.filter((y) => y.driver_id === x.driver_id && y.rating);
+      return { ...x, driver_avg: rs.length ? Math.round((rs.reduce((a, y) => a + y.rating, 0) / rs.length) * 10) / 10 : null, driver_name: dr && dr.full_name, driver_phone: dr && dr.phone, lat: live && loc ? loc.lat : null, lng: live && loc ? loc.lng : null, loc_at: live && loc ? loc.updated_at : null };
     },
     async deliveries() {
       if (LIVE) return chk(await sb.from("deliveries").select("*").order("created_at", { ascending: false }).limit(1000));
@@ -98,20 +118,38 @@
       if (me && me.role === "merchant") return all.filter((x) => x.merchant_id === me.id);
       return all;
     },
-    async updateDelivery(id, patch) { patch = { ...patch, updated_at: nowISO() }; if (patch.status === "delivered") patch.delivered_at = nowISO(); if (LIVE) return chk(await sb.from("deliveries").update(patch).eq("id", id)); Object.assign(db().deliveries.find((x) => x.id === id), patch); persist(); },
+    async updateDelivery(id, patch) { patch = { ...patch, updated_at: nowISO() }; if (patch.status === "delivered") patch.delivered_at = nowISO(); if (LIVE) return chk(await sb.from("deliveries").update(patch).eq("id", id));
+      const x = db().deliveries.find((y) => y.id === id), was = x.status, wasDr = x.driver_id; Object.assign(x, patch);
+      if (x.driver_id && x.driver_id !== wasDr) { x.offered_to = null; x.offered_at = null; }
+      if (x.status === "delivered" && was !== "delivered" && x.driver_id && x.driver_earning == null) x.driver_earning = SET("driver_pay_type", "fixed") === "percent" ? Math.round(Number(x.fee) * SET("driver_pay", 0.5) * 10) / 1000 : Number(SET("driver_pay", 0.5));
+      persist(); },
     async deleteDelivery(id) { if (LIVE) return chk(await sb.from("deliveries").delete().eq("id", id)); const d = db(); d.deliveries = d.deliveries.filter((x) => x.id !== id); persist(); },
     async driverDeliveries() {
       const me = await this.me(); if (!me) return [];
-      if (LIVE) return chk(await sb.from("deliveries").select("*").eq("driver_id", me.id).order("created_at", { ascending: false }).limit(300));
-      return db().deliveries.filter((x) => x.driver_id === me.id);
+      if (LIVE) return chk(await sb.from("deliveries").select("*").or(`driver_id.eq.${me.id},offered_to.eq.${me.id}`).order("created_at", { ascending: false }).limit(500));
+      return db().deliveries.filter((x) => x.driver_id === me.id || x.offered_to === me.id);
     },
     async driverUpdate(id, st, proof, reason) {
       if (LIVE) return chk(await sb.rpc("driver_update", { did: id, st, proof: proof || null, reason: reason || null }));
       const patch = { status: st }; if (proof) patch.proof_url = proof; if (st === "failed") patch.failed_reason = reason; return this.updateDelivery(id, patch);
     },
+    async driverRespond(id, accept) {
+      if (LIVE) return chk(await sb.rpc("driver_respond", { did: id, accept }));
+      const me = sess.get(), d = db(), x = d.deliveries.find((y) => y.id === id);
+      if (!x || x.offered_to !== me.id || x.status !== "new") throw new Error("OFFER_GONE");
+      if (accept) { x.driver_id = me.id; x.status = "assigned"; x.offered_to = null; x.offered_at = null; x.updated_at = nowISO(); }
+      else { x.declined = [...(x.declined || []), me.id]; x.offered_to = null; x.offered_at = null; demoDispatch(id); }
+      persist();
+    },
+    async dispatchTick() { if (LIVE) { try { await sb.rpc("dispatch_tick"); } catch (e) {} return; } demoTick(); },
+    async rateDelivery(id, stars, note) {
+      if (LIVE) return chk(await sb.rpc("rate_delivery", { did: id, stars, note: note || null }));
+      const x = db().deliveries.find((y) => y.id === id); if (!x || x.status !== "delivered" || x.rating) throw new Error("ALREADY_RATED");
+      x.rating = stars; x.rating_note = note || null; x.rated_at = nowISO(); persist();
+    },
     async driverPing(lat, lng) {
       if (LIVE) return chk(await sb.rpc("driver_ping", { plat: lat, plng: lng }));
-      const me = sess.get(); if (!me) return; const d = db(); d.locations = d.locations.filter((l) => l.driver_id !== me.id); d.locations.push({ driver_id: me.id, lat, lng, updated_at: nowISO() }); persist();
+      const me = sess.get(); if (!me) return; const d = db(); d.locations = d.locations.filter((l) => l.driver_id !== me.id); d.locations.push({ driver_id: me.id, lat, lng, updated_at: nowISO() }); persist(); demoTick();
     },
     async driverLocations() { return LIVE ? chk(await sb.from("driver_locations").select("*")) : db().locations; },
 

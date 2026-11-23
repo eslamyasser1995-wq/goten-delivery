@@ -93,13 +93,21 @@
     sheet(`<h3 style="margin:4px 0">شحنة #${d.no}</h3><div class="mut">${esc(d.pickup_area)} ← ${esc(d.drop_area)} · ${fmtDate(d.created_at)}</div>
       ${bad ? `<p><span class="st" style="background:${DST[d.status].c}">${DST[d.status].ar}</span> ${d.failed_reason ? esc(d.failed_reason) : ""}</p>` :
         `<div class="timeline">${DFLOW.map((s, i) => `<div class="tl ${i <= idx ? "done" : ""}"><span class="dot">${i <= idx ? "✓" : ""}</span>${DST[s].ar}</div>`).join("")}</div>`}
-      ${d.driver_name ? `<div class="card" style="background:#effcfc"><b>🛵 المندوب: ${esc(d.driver_name)}</b>${d.driver_phone ? ` <a class="btn sm tq" href="tel:+${esc(d.driver_phone)}">📞 اتصال</a>` : ""}</div>` : ""}
+      ${(() => { const e = UI.eta(d); return e ? `<div class="card" style="background:#eef6ff;text-align:center"><div class="mut">⏱️ الوصول المتوقع</div><b style="font-size:24px">خلال ~${e.min} دقيقة</b><div class="mut">حوالي الساعة ${e.at}${d.status === "new" ? " · بندوّر على أقرب مندوب" : ""}</div></div>` : ""; })()}
+      ${d.status === "delivered" ? (d.rating ? `<div class="card" style="text-align:center"><div class="mut">تقييمك للمندوب</div>${UI.stars(d.rating, 26)}<div class="mut">شكراً لتقييمك 🙏</div></div>` : `<div class="card" style="text-align:center"><b>قيّم المندوب ${esc(d.driver_name || "")}</b><div id="rateStars" style="font-size:38px;letter-spacing:4px;margin:6px 0;cursor:pointer">${[1, 2, 3, 4, 5].map((i) => `<span data-star="${i}" style="color:#cbd5e1">★</span>`).join("")}</div><input class="in" id="rateNote" placeholder="تعليق (اختياري)"><button class="btn tq block" style="margin-top:8px" id="rateBtn" disabled>إرسال التقييم</button></div>`) : ""}
+      ${d.driver_name ? `<div class="card" style="background:#effcfc"><b>🛵 المندوب: ${esc(d.driver_name)}</b>${d.driver_avg ? ` <span style="white-space:nowrap">${UI.stars(d.driver_avg, 14)} <small class="mut">${d.driver_avg}</small></span>` : ""}${d.driver_phone ? ` <a class="btn sm tq" href="tel:+${esc(d.driver_phone)}">📞 اتصال</a>` : ""}</div>` : ""}
       ${d.lat ? `<div id="tmap" class="mapbox"></div><div class="mut">آخر تحديث لموقع المندوب: ${ago(d.loc_at)}</div>` : ""}
       ${d.proof_url ? `<b>📸 صورة التسليم</b><img src="${esc(d.proof_url)}" alt="" class="proof">` : ""}
       <div class="line"><span>التوصيل</span><b>${money(d.fee)} (${d.fee_payer === "receiver" ? "على المستلم" : "على المرسل"})</b></div>
       ${collect ? `<div class="line total"><span>المطلوب من المستلم</span><span>${money(collect)}</span></div>` : ""}
       <button class="btn ghost block" style="margin-top:10px" data-share="${d.id}" data-no="${d.no}">🔗 مشاركة رابط التتبع</button>`, () => {
       if (d.lat) makeMap($("tmap"), [{ lat: d.lat, lng: d.lng, label: "🛵 " + (d.driver_name || "المندوب") }]).catch(() => {});
+      const rs = $("rateStars");
+      if (rs) {
+        let v = 0;
+        rs.querySelectorAll("[data-star]").forEach((el) => (el.onclick = () => { v = +el.dataset.star; rs.querySelectorAll("[data-star]").forEach((x) => (x.style.color = +x.dataset.star <= v ? "#f59e0b" : "#cbd5e1")); $("rateBtn").disabled = false; }));
+        $("rateBtn").onclick = async () => { $("rateBtn").disabled = true; try { await Store.rateDelivery(d.id, v, $("rateNote").value.trim()); toast("شكراً لتقييمك ⭐"); openTrack(d.id); } catch (e) { toast(String(e.message).includes("ALREADY") ? "الشحنة دي اتقيّمت قبل كده" : e.message, "err"); } };
+      }
     });
   }
 

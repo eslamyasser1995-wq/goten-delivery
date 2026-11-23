@@ -145,5 +145,23 @@
     });
   }
   document.addEventListener("click", (e) => { if (e.target.closest("[data-forgot]")) { const em = document.getElementById("em"); forgot(em ? em.value.trim() : ""); } });
-  window.UI = { forgot, recover, DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
+  // مراكز المحافظات + المسافة + وقت الوصول المتوقع
+  const ZLL = { "العاصمة": [29.3697, 47.9783], "حولي": [29.3326, 48.0302], "الفروانية": [29.2775, 47.958], "مبارك الكبير": [29.205, 48.076], "الأحمدي": [29.0769, 48.0838], "الجهراء": [29.3375, 47.6581] };
+  const km = (a, b) => { const R = (x) => (x * Math.PI) / 180, dl = R(b[0] - a[0]), dn = R(b[1] - a[1]); const h = Math.sin(dl / 2) ** 2 + Math.cos(R(a[0])) * Math.cos(R(b[0])) * Math.sin(dn / 2) ** 2; return 6371 * 2 * Math.asin(Math.sqrt(h)); };
+  const drive = (k) => Math.round((k * 1.35) / 35 * 60); // دقائق بسرعة 35 كم/س ومعامل طرق
+  function eta(d) {
+    if (!["new", "assigned", "picked_up"].includes(d.status)) return null;
+    const pz = ZLL[d.pickup_zone || zoneOf(d.pickup_area)] || ZLL["العاصمة"], dz = ZLL[d.drop_zone || zoneOf(d.drop_area)] || ZLL["العاصمة"];
+    const me = d.lat && d.lng && Date.now() - new Date(d.loc_at) < 15 * 60e3 ? [Number(d.lat), Number(d.lng)] : null;
+    const leg = Math.max(8, drive(km(pz, dz)) + 6);
+    let min;
+    if (d.status === "picked_up") min = me ? Math.max(5, drive(km(me, dz)) + 4) : leg;
+    else if (d.status === "assigned") min = (me ? drive(km(me, pz)) + 5 : 15) + leg;
+    else min = 20 + leg;
+    min = Math.round(min / 5) * 5 || 5;
+    const at = new Date(Date.now() + min * 60e3);
+    return { min, at: at.toLocaleTimeString("ar-KW", { hour: "numeric", minute: "2-digit" }) };
+  }
+  const stars = (n, size = 18) => "★★★★★".slice(0, Math.round(n)).padEnd(5, "☆").split("").map((c) => `<span style="color:${c === "★" ? "#f59e0b" : "#cbd5e1"};font-size:${size}px">★</span>`).join("");
+  window.UI = { ZLL, km, eta, stars, forgot, recover, DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
 })();

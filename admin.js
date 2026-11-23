@@ -21,7 +21,11 @@
     const done = A.list.filter((d) => d.driver_id === id && d.status === "delivered");
     const col = done.reduce((s, d) => s + collectOf(d), 0);
     const hand = A.setl.filter((x) => x.kind === "driver_handover" && x.party === id).reduce((s, x) => s + num(x.amount), 0);
-    return { done: done.length, today: done.filter((d) => today(d.delivered_at)).length, active: A.list.filter((d) => d.driver_id === id && ["assigned", "picked_up"].includes(d.status)).length, col, hand, cash: col - hand };
+    const earn = done.reduce((s, d) => s + num(d.driver_earning), 0), paid = A.setl.filter((x) => x.kind === "driver_payout" && x.party === id).reduce((s, x) => s + num(x.amount), 0);
+    const rated = A.list.filter((d) => d.driver_id === id && d.rating), loc = A.locs.find((l) => l.driver_id === id);
+    return { done: done.length, today: done.filter((d) => today(d.delivered_at)).length, active: A.list.filter((d) => d.driver_id === id && ["assigned", "picked_up"].includes(d.status)).length, col, hand, cash: col - hand,
+      earn, paid, bal: col - hand - earn + paid, todayEarn: done.filter((d) => today(d.delivered_at)).reduce((s, d) => s + num(d.driver_earning), 0),
+      avg: rated.length ? Math.round((rated.reduce((s, d) => s + d.rating, 0) / rated.length) * 10) / 10 : null, rates: rated.length, online: !!(loc && Date.now() - new Date(loc.updated_at) < 15 * 60e3) };
   }
 
   // ---------- الدخول ----------
@@ -55,12 +59,14 @@
   function dash() {
     const td = A.list.filter((d) => today(d.created_at)), del = A.list.filter((d) => d.status === "delivered" && today(d.delivered_at));
     const fees = del.reduce((s, d) => s + num(d.fee), 0), allFees = A.list.filter((d) => d.status === "delivered").reduce((s, d) => s + num(d.fee), 0);
-    const cash = drivers().reduce((s, p) => s + driverSt(p.id).cash, 0), owe = merchants().reduce((s, p) => s + Math.max(0, merchantSt(p.id).bal), 0);
+    const cash = drivers().reduce((s, p) => s + Math.max(0, driverSt(p.id).bal), 0), owe = merchants().reduce((s, p) => s + Math.max(0, merchantSt(p.id).bal), 0);
     const pend = A.profiles.filter((p) => p.role === "pending").length;
+    const rated = A.list.filter((d) => d.rating), avg = rated.length ? (rated.reduce((a, d) => a + d.rating, 0) / rated.length).toFixed(1) : null, online = drivers().filter((p) => driverSt(p.id).online).length;
     const cnt = (s) => A.list.filter((d) => d.status === s).length;
     return `<div class="stats" style="margin-top:12px">
       <div class="stat"><span class="mut">طلبات النهارده</span><b>${td.length}</b></div><div class="stat"><span class="mut">اتسلمت النهارده</span><b>${del.length}</b></div>
       <div class="stat"><span class="mut">إيراد التوصيل النهارده</span><b>${money(fees)}</b></div><div class="stat"><span class="mut">إجمالي إيراد التوصيل</span><b>${money(allFees)}</b></div>
+      <div class="stat"><span class="mut">مناديب متاحين دلوقتي</span><b style="color:#16a34a">${online} / ${drivers().length}</b></div><div class="stat"><span class="mut">متوسط التقييم</span><b>${avg ? "⭐ " + avg : "—"}</b><small class="mut">${rated.length} تقييم</small></div>
       <div class="stat"><span class="mut">كاش مع المناديب</span><b style="color:#b45309">${money(cash)}</b></div><div class="stat"><span class="mut">مستحق للمحلات</span><b style="color:#dc2626">${money(owe)}</b></div></div>
       ${pend ? `<div class="notice" data-tab="drv" style="cursor:pointer">⏳ فيه ${pend} حساب مستني موافقتك – اضغط هنا</div>` : ""}
       <div class="card"><b>حالة الشحنات</b>${Object.keys(DST).map((s) => `<div class="line"><span><span class="st" style="background:${DST[s].c}">${DST[s].ar}</span></span><b>${cnt(s)}</b></div>`).join("")}</div>
@@ -84,7 +90,9 @@
       <div class="ad">🟦 ${esc(d.sender_name)} · <a href="tel:+${esc(d.sender_phone)}">${esc(d.sender_phone)}</a> – <b>${esc(d.pickup_area)}</b>${d.pickup_address ? "، " + esc(d.pickup_address) : ""}<br>
       🟩 ${esc(d.receiver_name)} · <a href="tel:+${esc(d.receiver_phone)}">${esc(d.receiver_phone)}</a> – <b>${esc(d.drop_area)}</b>${d.drop_address ? "، " + esc(d.drop_address) : ""}</div>
       ${d.package ? `<div class="mut">📦 ${esc(d.package)}</div>` : ""}${d.schedule ? `<div class="mut">⏰ ${esc(d.schedule)}</div>` : ""}${d.notes ? `<div class="mut">📝 ${esc(d.notes)}</div>` : ""}${d.failed_reason ? `<div style="color:var(--red)">❌ ${esc(d.failed_reason)}</div>` : ""}
-      <div style="margin:6px 0"><span class="pill">توصيل ${money(d.fee)} على ${d.fee_payer === "receiver" ? "المستلم" : "المرسل"}</span> ${c ? `<span class="pill cod">💵 تحصيل ${money(c)}</span>` : ""} <span class="mut" style="font-size:12px">${fmtDate(d.created_at)}</span></div>
+      ${d.status === "new" && d.offered_to ? `<div class="pill" style="background:#fef3c7;color:#92400e">⏳ معروضة على ${esc(pname(d.offered_to))}</div>` : d.status === "new" && A.settings.auto_dispatch !== false ? `<div class="pill">🤖 مستنية مندوب متاح</div>` : ""}
+      ${d.rating ? `<div>${UI.stars(d.rating, 14)}${d.rating_note ? ` <span class="mut">«${esc(d.rating_note)}»</span>` : ""}</div>` : ""}
+      <div style="margin:6px 0"><span class="pill">توصيل ${money(d.fee)} على ${d.fee_payer === "receiver" ? "المستلم" : "المرسل"}</span>${d.driver_earning != null ? ` <span class="pill">ربح المندوب ${money(d.driver_earning)}</span>` : ""} ${c ? `<span class="pill cod">💵 تحصيل ${money(c)}</span>` : ""} <span class="mut" style="font-size:12px">${fmtDate(d.created_at)}</span></div>
       <div class="row2"><select class="in" data-assign="${d.id}"><option value="">— اختار مندوب —</option>${drivers().map((p) => `<option value="${p.id}" ${d.driver_id === p.id ? "selected" : ""}>🛵 ${esc(p.full_name || p.phone)} (${driverSt(p.id).active})</option>`).join("")}</select>
         <select class="in" data-status="${d.id}">${Object.keys(DST).map((s) => `<option value="${s}" ${d.status === s ? "selected" : ""}>${DST[s].ar}</option>`).join("")}</select></div>
       <div class="acts">${d.proof_url ? `<button class="btn sm ghost" data-proof="${esc(d.proof_url)}">📸 الإثبات</button>` : ""}<button class="btn sm ghost" data-fee="${d.id}">✏️ السعر</button><button class="btn sm ghost" data-wa="${d.id}">💬 رابط للمستلم</button><button class="btn sm ghost" style="color:var(--red)" data-del="${d.id}">🗑️ حذف</button></div></div>`;
@@ -133,13 +141,18 @@
     const others = A.profiles.filter((p) => ["admin", "blocked"].includes(p.role));
     return `${pend.length ? `<div class="h2">⏳ مناديب مستنيين الموافقة</div>${pend.map((p) => userRow(p)).join("")}` : ""}
       <div class="h2">🛵 المناديب (${drivers().length})</div>
-      ${drivers().map((p) => { const s = driverSt(p.id); return userRow(p, `<div class="line"><span>شغّال عليه: ${s.active} · النهارده: ${s.today} · الكل: ${s.done}</span></div><div class="line"><span>حصّل</span><b>${money(s.col)}</b></div><div class="line"><span>سلّم للشركة</span><b>${money(s.hand)}</b></div><div class="line total"><span>الكاش اللي معاه</span><span>${money(s.cash)}</span></div><div class="acts"><button class="btn sm green" data-hand="${p.id}">💵 استلمت منه كاش</button></div>`); }).join("") || `<p class="mut">المناديب بيسجّلوا من صفحة driver.html وبعدين توافق عليهم هنا.</p>`}
+      ${drivers().map((p) => { const s = driverSt(p.id); return userRow(p, `<div class="line"><span>${s.online ? "🟢 متاح دلوقتي" : "⚪ مش متاح"} · ${s.avg ? `${UI.stars(s.avg, 13)} ${s.avg} (${s.rates})` : "لسه مفيش تقييم"}</span></div>
+        <div class="line"><span>شغّال عليه: ${s.active} · النهارده: ${s.today} · الكل: ${s.done}</span></div>
+        <div class="line"><span>💵 حصّل من الزباين</span><b>${money(s.col)}</b></div><div class="line"><span>− سلّم للشركة</span><b>${money(s.hand)}</b></div>
+        <div class="line"><span>− أرباحه (النهارده ${money(s.todayEarn)})</span><b>${money(s.earn)}</b></div><div class="line"><span>+ اتصرفله</span><b>${money(s.paid)}</b></div>
+        <div class="line total"><span>${s.bal >= 0 ? "عليه للشركة" : "ليه عند الشركة"}</span><span style="color:${s.bal > 0.0005 ? "#b45309" : "#16a34a"}">${money(Math.abs(s.bal))}</span></div>
+        <div class="acts"><button class="btn sm green" data-hand="${p.id}">💵 استلمت منه كاش</button><button class="btn sm tq" data-dpay="${p.id}">💸 صرفت له أرباح</button></div>`); }).join("") || `<p class="mut">المناديب بيسجّلوا من صفحة driver.html وبعدين توافق عليهم هنا.</p>`}
       ${others.length ? `<div class="h2">👑 الإدارة والمحظورين</div>${others.map((p) => userRow(p)).join("")}` : ""}
       ${!Store.live ? `<button class="btn ghost block" data-adddrv="1">➕ مندوب تجريبي</button>` : ""}`;
   }
   function moneySheet(kind, id) {
-    const isPay = kind === "merchant_payout", s = isPay ? merchantSt(id) : driverSt(id), def = Math.max(0, isPay ? s.bal : s.cash);
-    sheet(`<h3>${isPay ? "💸 تحويل فلوس لـ" : "💵 استلام كاش من"} ${esc(pname(id))}</h3><p class="mut">${isPay ? "المستحق ليه" : "الكاش اللي معاه"}: <b>${money(def)}</b></p>
+    const isPay = kind === "merchant_payout", isDP = kind === "driver_payout", s = isPay ? merchantSt(id) : driverSt(id), def = Math.max(0, isPay ? s.bal : isDP ? -s.bal : s.bal);
+    sheet(`<h3>${isPay ? "💸 تحويل فلوس لـ" : isDP ? "💸 صرف أرباح لـ" : "💵 استلام كاش من"} ${esc(pname(id))}</h3><p class="mut">${isPay ? "المستحق ليه" : isDP ? "ليه عند الشركة" : "عليه للشركة (الكاش ناقص أرباحه)"}: <b>${money(def)}</b></p>
       <label class="f"><span>المبلغ (د.ك)</span><input class="in" id="amt" type="number" step="0.005" inputmode="decimal" value="${def.toFixed(3)}"></label>
       <label class="f"><span>ملاحظة</span><input class="in" id="nt" placeholder="${isPay ? "مثال: تحويل بنكي / كاش" : ""}"></label><button class="btn green block" id="okAmt">حفظ</button>`, () => {
       $("okAmt").onclick = async () => { const a = num($("amt").value); if (a <= 0) return toast("اكتب مبلغ", "err"); try { await Store.saveSettlement({ kind, party: id, amount: a, note: $("nt").value.trim() || null }); closeSheet(); toast("اتسجّل ✓"); await load(); } catch (e) { toast(e.message, "err"); } };
@@ -172,6 +185,12 @@
     return `<div class="card" style="margin-top:12px">${f("company_name", "اسم الشركة")}${f("tagline", "جملة تحت الاسم")}${f("whatsapp", "واتساب الشركة (965xxxxxxxx)", 'inputmode="numeric"')}${f("notice", "إعلان يظهر للزباين")}
       <label class="f"><span>اللون الأساسي</span><input class="in" type="color" data-set="accent" value="${esc(s.accent || "#0B5CAD")}" style="height:46px"></label>
       <label class="radio"><input type="checkbox" data-set="is_open" ${s.is_open !== false ? "checked" : ""}> بنستقبل طلبات دلوقتي</label>
+      <div class="h2" style="margin-top:14px">🤖 التوزيع التلقائي</div>
+      <label class="radio"><input type="checkbox" data-set="auto_dispatch" ${s.auto_dispatch !== false ? "checked" : ""}> وزّع الشحنات الجديدة لوحدها على أقرب مندوب متاح</label>
+      <div class="row2"><label class="f"><span>مهلة القبول (ثانية)</span><input class="in" type="number" min="20" data-set="offer_seconds" value="${esc(s.offer_seconds || 60)}"></label><label class="f"><span>أقصى شحنات مع المندوب</span><input class="in" type="number" min="1" data-set="max_active" value="${esc(s.max_active || 3)}"></label></div>
+      <div class="h2">💰 أرباح المندوب من كل شحنة</div>
+      <div class="row2"><label class="f"><span>طريقة الحساب</span><select class="in" data-set="driver_pay_type"><option value="fixed" ${s.driver_pay_type !== "percent" ? "selected" : ""}>مبلغ ثابت (د.ك)</option><option value="percent" ${s.driver_pay_type === "percent" ? "selected" : ""}>نسبة من سعر التوصيل %</option></select></label><label class="f"><span>القيمة</span><input class="in" type="number" step="0.005" min="0" inputmode="decimal" data-set="driver_pay" value="${esc(s.driver_pay ?? 0.5)}"></label></div>
+      <p class="mut" style="font-size:12px">بتتحسب على كل شحنة لحظة التسليم.</p>
       <label class="f"><span>اللوجو</span><input type="file" accept="image/*" id="logoF"></label>${s.logo ? `<img src="${esc(s.logo)}" style="height:60px;border-radius:12px" alt="">` : ""}
       <button class="btn tq block" id="saveS">💾 حفظ</button></div>
       ${!Store.live ? `<button class="btn ghost block" id="resetDemo">♻️ مسح البيانات التجريبية</button>` : ""}`;
@@ -188,7 +207,7 @@
     } catch (err) { toast(err.message, "err"); }
   });
   document.addEventListener("click", async (e) => {
-    const el = e.target.closest("[data-tab],[data-filter],[data-newd],[data-proof],[data-fee],[data-wa],[data-del],[data-pay],[data-hand],[data-stmt],[data-unset],[data-adddrv],#saveP,#allBtn,#saveS,#resetDemo"); if (!el) return;
+    const el = e.target.closest("[data-tab],[data-filter],[data-newd],[data-proof],[data-fee],[data-wa],[data-del],[data-pay],[data-hand],[data-dpay],[data-stmt],[data-unset],[data-adddrv],#saveP,#allBtn,#saveS,#resetDemo"); if (!el) return;
     const ds = el.dataset;
     try {
       if (ds.tab) { closeSheet(); A.tab = ds.tab; render(); scrollTo(0, 0); }
@@ -200,6 +219,7 @@
       else if (ds.del) { if (!(await ask("حذف الشحنة نهائياً؟"))) return; await Store.deleteDelivery(ds.del); toast("اتحذفت"); await load(); }
       else if (ds.pay) moneySheet("merchant_payout", ds.pay);
       else if (ds.hand) moneySheet("driver_handover", ds.hand);
+      else if (ds.dpay) moneySheet("driver_payout", ds.dpay);
       else if (ds.stmt) stmtSheet(ds.stmt);
       else if (ds.unset) { if (!(await ask("حذف التحويل ده؟"))) return; await Store.deleteSettlement(ds.unset); closeSheet(); await load(); }
       else if (ds.adddrv) { await Store.saveProfile({ full_name: "مندوب " + (drivers().length + 1), phone: "9659999000" + (drivers().length + 3), role: "driver" }); await load(); }
@@ -212,6 +232,7 @@
 
   function beep() { try { const c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = 880; g.gain.value = 0.2; o.start(); setTimeout(() => { o.frequency.value = 1320; }, 150); setTimeout(() => { o.stop(); c.close(); }, 400); } catch (e) {} }
   async function load() {
+    await Store.dispatchTick();
     [A.list, A.profiles, A.setl, A.prices, A.locs, A.settings] = await Promise.all([Store.deliveries(), Store.profiles(), Store.settlements(), Store.prices(), Store.driverLocations(), Store.settings()]);
     const ids = new Set(A.list.filter((d) => d.status === "new").map((d) => d.id));
     if (A.known && [...ids].some((i) => !A.known.has(i))) { toast("🔔 شحنة جديدة وصلت!"); beep(); try { navigator.vibrate && navigator.vibrate([300, 100, 300]); } catch (e) {} }
