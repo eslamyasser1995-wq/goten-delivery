@@ -43,13 +43,14 @@
     const handed = D.setl.filter((s) => s.kind === "driver_handover").reduce((s, x) => s + num(x.amount), 0);
     const todayCash = D.list.filter((d) => d.status === "delivered" && today(d.delivered_at)).reduce((s, d) => s + collectOf(d), 0);
     const list = D.tab === "active" ? active : done;
-    $("app").innerHTML = `<header class="top"><div class="wrap"><div class="row"><div class="brand">${LOGO}<div>مناديب ${esc(D.name)}<small>${esc(D.me.full_name || "")}</small></div></div><div class="sp"></div><button class="chip-btn" id="outBtn">خروج</button></div>
+    $("app").innerHTML = `<header class="top"><div class="wrap"><div class="row"><div class="brand">${LOGO}<div>مناديب ${esc(D.name)}<small>${esc(D.me.full_name || "")}</small></div></div><div class="sp"></div><button class="chip-btn" id="pushBtn">${UI.pushState() === "granted" ? "🔔" : "🔕 فعّل"}</button><button class="chip-btn" id="outBtn">خروج</button></div>
       <div class="tabs"><button class="${D.tab === "active" ? "on" : ""}" data-tab="active">الحالية (${active.length})</button><button class="${D.tab === "done" ? "on" : ""}" data-tab="done">خلصت النهارده (${done.length})</button></div></div></header>
       <main><div class="wrap">
         <div class="card" style="display:flex;align-items:center;gap:10px;margin-top:12px"><div style="flex:1"><b>📍 مشاركة موقعي</b><div class="mut" style="font-size:12px">الإدارة والزبون يشوفوا مكانك وانت شغال. خلّي الصفحة مفتوحة.</div></div><button class="btn sm ${D.sharing ? "green" : "ghost"}" id="locBtn">${D.sharing ? "شغّال ✓" : "شغّل"}</button></div>
         <div class="stats"><div class="stat"><span class="mut">كاش النهارده</span><b>${money(todayCash)}</b></div><div class="stat"><span class="mut">الكاش اللي معاك</span><b style="color:#b45309">${money(collected - handed)}</b></div></div>
         ${list.length ? list.map(card).join("") : `<div class="empty"><div class="e">${D.tab === "active" ? "😴" : "📭"}</div>${D.tab === "active" ? "مفيش شحنات عليك دلوقتي" : "لسه مفيش"}</div>`}
       </div></main>`;
+    $("pushBtn").onclick = async () => { try { await UI.enablePush((x) => Store.savePush(x)); toast("✅ هيجيلك إشعار لما تتعيّن عليك شحنة"); render(); } catch (e) { toast(/save_push/.test(e.message) ? "الإشعارات لسه مش متفعّلة من الإدارة" : e.message, "err"); } };
     $("outBtn").onclick = async () => { stopLoc(); await Store.signOut(); D.me = null; loginView(); };
     $("locBtn").onclick = () => (D.sharing ? stopLoc() : startLoc());
   }

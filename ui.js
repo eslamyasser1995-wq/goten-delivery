@@ -78,7 +78,7 @@
     if (st === "need_home") throw new Error("ضيف الصفحة دي للشاشة الرئيسية الأول (مشاركة ← إضافة إلى الشاشة الرئيسية)، وافتحها من الأيقونة، وبعدين فعّل الإشعارات");
     if (st === "unsupported") throw new Error("الجهاز ده مش بيدعم الإشعارات – حدّث الآيفون لـ iOS 16.4 أو أحدث");
     const perm = await Notification.requestPermission();
-    if (perm !== "granted") throw new Error("الإشعارات مقفولة – فعّلها من إعدادات الآيفون ← الإشعارات ← Goten");
+    if (perm !== "granted") throw new Error("الإشعارات مقفولة – فعّلها من إعدادات الآيفون ← الإشعارات ← Goten Delivery");
     const reg = await navigator.serviceWorker.register("sw.js");
     await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();

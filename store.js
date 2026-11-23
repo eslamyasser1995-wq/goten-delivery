@@ -142,6 +142,11 @@
     async profiles() { return LIVE ? chk(await sb.from("profiles").select("*").order("created_at", { ascending: false })) : db().profiles; },
     async saveProfile(p) { if (LIVE) { const { id, ...rest } = p; delete rest.email; delete rest.created_at; return chk(await sb.from("profiles").update(rest).eq("id", id)); } const d = db(); const i = d.profiles.findIndex((x) => x.id === p.id); if (i >= 0) d.profiles[i] = { ...d.profiles[i], ...p }; else d.profiles.push({ ...p, id: p.id || uid() }); persist(); },
     async updateMyProfile(p) { if (LIVE) return chk(await sb.rpc("update_my_profile", { p })); const me = sess.get(); await this.saveProfile({ ...p, id: me.id }); sess.set({ ...me, ...p }); },
+    async savePush(sub) {
+      if (!LIVE) throw new Error("الإشعارات بتشتغل في النسخة الحقيقية بس");
+      const j = sub.toJSON();
+      chk(await sb.rpc("save_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth }));
+    },
     async resetDemo() { if (!LIVE) { mem = seed(); persist(); } }
   };
   window.Store = Store;
