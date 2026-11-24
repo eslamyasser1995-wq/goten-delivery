@@ -6,7 +6,8 @@
   const P8 = /^[124569]\d{7}$/;
   const ph = (v) => String(v || "").replace(/\D/g, "").replace(/^965(?=\d{8}$)/, "");
   const areaOptions = (sel) => `<option value="">اختر المنطقة</option>` + Object.entries(AREAS).map(([g, arr]) => `<optgroup label="${g}">${arr.map((x) => `<option ${sel === x ? "selected" : ""}>${x}</option>`).join("")}</optgroup>`).join("");
-  const isMerchant = () => S.me && S.me.role === "merchant";
+  const isMerchant = () => S.me && (S.me.role === "merchant" || S.me.role === "driver");
+  const isDriver = () => S.me && S.me.role === "driver";
 
   function feeFor(a1, a2) {
     const z1 = zoneOf(a1), z2 = zoneOf(a2); if (!z1 || !z2) return null;
@@ -24,7 +25,7 @@
   function field(id, label, val, type = "text", extra = "") { return `<label class="f"><span>${label}</span><input class="in" id="${id}" type="${type}" value="${esc(val || "")}" ${extra}></label>`; }
   function newView() {
     const s = S.settings, m = isMerchant() ? S.me : null, l = S.last;
-    const snd = m ? { name: m.business_name || m.full_name, phone: ph(m.phone), area: m.pickup_area, addr: m.pickup_address } : { name: l.sender_name, phone: ph(l.sender_phone), area: l.pickup_area, addr: l.pickup_address };
+    const snd = m ? { name: m.business_name || m.full_name, phone: ph(m.phone), area: m.pickup_area || l.pickup_area, addr: m.pickup_address || l.pickup_address } : { name: l.sender_name, phone: ph(l.sender_phone), area: l.pickup_area, addr: l.pickup_address };
     return `<div class="wrap">
       ${s.tagline ? `<p class="mut" style="text-align:center;margin:14px 0 4px">${esc(s.tagline)}</p>` : ""}
       ${!s.is_open ? `<div class="notice">⛔ مش بنستقبل طلبات دلوقتي</div>` : ""}${s.notice ? `<div class="notice">📢 ${esc(s.notice)}</div>` : ""}
@@ -77,7 +78,7 @@
     } catch (e) { const m = String(e.message); toast(m.includes("CLOSED") ? "مش بنستقبل طلبات دلوقتي" : m.includes("PHONE") ? "رقم الهاتف غلط" : m.includes("AREA") || m.includes("PRICE") ? "المنطقة دي مش متاحة" : m, "err"); $("send").disabled = false; }
   }
 
-  async function loadList() { if (isMerchant()) { S.list = await Store.deliveries(); S.setl = await Store.settlements(); } }
+  async function loadList() { if (isMerchant()) { S.list = (await Store.deliveries()).filter((d) => d.merchant_id === S.me.id); S.setl = await Store.settlements(); } }
   function listView() {
     const rows = isMerchant() ? S.list.map((d) => ({ id: d.id, no: d.no, to: d.receiver_name, area: d.drop_area, at: d.created_at, st: d.status, cod: d.cod_amount, fee: d.fee })) : S.mine;
     if (!rows.length) return `<div class="wrap"><div class="empty"><div class="e">📦</div>لسه مفيش شحنات</div></div>`;
@@ -126,9 +127,9 @@
         <details style="margin-top:12px"><summary><b>محل جديد؟ سجّل هنا</b></summary>${field("bn", "اسم المحل *", "")}<div class="row2">${field("fn", "اسمك", "")}${field("bp", "الهاتف *", "", "tel", 'inputmode="numeric" maxlength="8"')}</div>
           <label class="f"><span>منطقة الاستلام</span><select class="in" id="ba">${areaOptions("")}</select></label>${field("bd", "عنوان الاستلام", "")}<p class="mut">اكتب الإيميل وكلمة السر فوق، وبعدين:</p><button class="btn tq block" id="upBtn">إنشاء حساب المحل</button></details>`
         : `<span class="demo-tag">وضع تجريبي</span><button class="btn block" style="margin-top:8px" id="demoM">🏪 دخول كمحل تجريبي</button>`}</div></div>`;
-    if (S.me.role !== "merchant") return `<div class="wrap"><div class="h2">حسابي</div><div class="card"><b>${esc(S.me.business_name || S.me.full_name || S.me.email || "")}</b><p class="mut">${S.me.role === "pending" ? "⏳ حسابك قيد المراجعة – هنفعّله ونكلمك قريب." : "الحساب ده مش حساب محل."}</p><button class="btn ghost block" id="outBtn">خروج</button></div></div>`;
+    if (!isMerchant()) return `<div class="wrap"><div class="h2">حسابي</div><div class="card"><b>${esc(S.me.business_name || S.me.full_name || S.me.email || "")}</b><p class="mut">${S.me.role === "pending" ? "⏳ حسابك قيد المراجعة – هنفعّله ونكلمك قريب." : "الحساب ده مش حساب محل."}</p><button class="btn ghost block" id="outBtn">خروج</button></div></div>`;
     const st = statement(), m = S.me;
-    return `<div class="wrap"><div class="h2">🏪 ${esc(m.business_name || m.full_name)}</div>
+    return `<div class="wrap"><div class="h2">${isDriver() ? "🛵" : "🏪"} ${esc(m.business_name || m.full_name)}</div>${isDriver() ? `<a class="btn tq block" style="margin-bottom:10px;text-align:center;text-decoration:none" href="driver.html">🛵 رجوع لشغل المندوب</a>` : ""}
       <div class="stats"><div class="stat"><span class="mut">شحنات اتسلمت</span><b>${st.done.length}</b></div><div class="stat"><span class="mut">رصيدك عندنا</span><b style="color:${st.bal >= 0 ? "#16a34a" : "#dc2626"}">${money(st.bal)}</b></div></div>
       <div class="card"><b>📒 كشف الحساب</b>
         <div class="line"><span>مبالغ اتحصّلت من زباينك</span><b>${money(st.cod)}</b></div>

@@ -100,7 +100,7 @@
       const d = db(); if (!d.settings.is_open) throw new Error("CLOSED");
       const { z1, z2, fee } = demoPrice(p.pickup_area, p.drop_area);
       const me = sess.get();
-      const row = { ...p, id: uid(), no: d.nextNo++, merchant_id: me && me.role === "merchant" ? me.id : null, pickup_zone: z1, drop_zone: z2, fee, cod_amount: Number(p.cod_amount || 0), fee_payer: p.fee_payer === "receiver" ? "receiver" : "sender", status: "new", driver_id: null, created_at: nowISO(), updated_at: nowISO() };
+      const row = { ...p, id: uid(), no: d.nextNo++, merchant_id: me && (me.role === "merchant" || me.role === "driver") ? me.id : null, pickup_zone: z1, drop_zone: z2, fee, cod_amount: Number(p.cod_amount || 0), fee_payer: p.fee_payer === "receiver" ? "receiver" : "sender", status: "new", driver_id: null, created_at: nowISO(), updated_at: nowISO() };
       d.deliveries.unshift(row); demoDispatch(row.id); persist();
       return { id: row.id, no: row.no, fee };
     },
