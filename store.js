@@ -70,7 +70,7 @@
     async init() {
       if (!LIVE) { db(); return; }
       if (!window.supabase) await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2");
-      sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY);
+      sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
       Store.recovery = RECOVERY;
       sb.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") { Store.recovery = true; if (Store._onRecovery) Store._onRecovery(); } });
       if (RECOVERY) await sb.auth.getSession();
@@ -168,7 +168,7 @@
       const p = (await sb.from("profiles").select("*").eq("id", data.user.id).maybeSingle()).data;
       return p ? { ...p, email: data.user.email } : { id: data.user.id, role: "pending", email: data.user.email };
     },
-    async signIn(email, password) { if (!LIVE) throw new Error("DEMO"); chk(await sb.auth.signInWithPassword({ email, password })); },
+    async signIn(email, password) { if (!LIVE) throw new Error("DEMO"); chk(await sb.auth.signInWithPassword({ email, password })); try { localStorage.setItem("guten_email", email); } catch (e) {} },
     async signUp(email, password, meta) { if (!LIVE) throw new Error("DEMO"); return chk(await sb.auth.signUp({ email, password, options: { data: meta } })); },
     async resetPassword(email) {
       if (!LIVE) throw new Error("مش متاح في الوضع التجريبي");

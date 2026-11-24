@@ -144,6 +144,10 @@
       };
     });
   }
+  // تذكّر الإيميل: يملا خانة الإيميل تلقائياً بآخر إيميل اتسجّل بيه
+  function lastEmail() { try { return localStorage.getItem("guten_email") || ""; } catch (e) { return ""; } }
+  function fillEmail() { const em = document.getElementById("em"); if (em && !em.value && !em.dataset.filled) { em.dataset.filled = "1"; em.value = lastEmail(); } }
+  new MutationObserver(fillEmail).observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener("click", (e) => { if (e.target.closest("[data-forgot]")) { const em = document.getElementById("em"); forgot(em ? em.value.trim() : ""); } });
   // مراكز المحافظات + المسافة + وقت الوصول المتوقع
   const ZLL = { "العاصمة": [29.3697, 47.9783], "حولي": [29.3326, 48.0302], "الفروانية": [29.2775, 47.958], "مبارك الكبير": [29.205, 48.076], "الأحمدي": [29.0769, 48.0838], "الجهراء": [29.3375, 47.6581] };
@@ -163,5 +167,5 @@
     return { min, at: at.toLocaleTimeString("ar-KW", { hour: "numeric", minute: "2-digit" }) };
   }
   const stars = (n, size = 18) => "★★★★★".slice(0, Math.round(n)).padEnd(5, "☆").split("").map((c) => `<span style="color:${c === "★" ? "#f59e0b" : "#cbd5e1"};font-size:${size}px">★</span>`).join("");
-  window.UI = { ZLL, km, eta, stars, forgot, recover, DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
+  window.UI = { lastEmail, ZLL, km, eta, stars, forgot, recover, DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
 })();
