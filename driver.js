@@ -5,6 +5,15 @@
   const D = { set: {}, lastLoc: null, me: null, list: [], setl: [], tab: "active", known: null, name: "Guten Delivery", watch: null, lastPing: 0, sharing: false };
   const collectOf = (d) => num(d.cod_amount) + (d.fee_payer === "receiver" ? num(d.fee) : 0);
   const today = (d) => d && new Date(d).toDateString() === new Date().toDateString();
+  const q = (area, addr) => encodeURIComponent((addr ? addr + " " : "") + area + " الكويت");
+  const route = (d) => "https://www.google.com/maps/dir/?api=1&travelmode=driving" + (d.status === "assigned" ? "&waypoints=" + q(d.pickup_area, d.pickup_address) : "") + "&destination=" + q(d.drop_area, d.drop_address);
+  const trackLink = (d) => location.origin + location.pathname.replace(/driver\.html$/, "") + "?track=" + d.id;
+  const waMsg = (d, who) => {
+    const c = collectOf(d), me = (D.me && D.me.full_name) || "المندوب";
+    const t = who === "s" ? `السلام عليكم، معاك ${me} مندوب ${D.name} 🛵\nأنا في الطريق لاستلام الشحنة #${d.no} وهوصل خلال دقايق إن شاء الله.`
+      : `السلام عليكم ${d.receiver_name}، معاك ${me} مندوب ${D.name} 🛵\nأنا في الطريق ليك بالشحنة #${d.no}${c ? `\n💵 المبلغ المطلوب: ${money(c)}` : ""}\n📍 تتبع مكاني: ${trackLink(d)}`;
+    return "https://wa.me/" + (who === "s" ? d.sender_phone : d.receiver_phone) + "?text=" + encodeURIComponent(t);
+  };
   const maps = (area, addr) => "https://maps.google.com/?q=" + encodeURIComponent((addr ? addr + " " : "") + area + " الكويت");
 
   async function loginView(msg) {
@@ -29,11 +38,13 @@
     const step = d.status === "assigned" ? "pickup" : "drop";
     return `<div class="dcard" style="border-color:${st.c}"><div class="hd"><b>#${d.no}</b><span class="st" style="background:${st.c}">${st.ar}</span></div>
       <div class="ad" style="${step === "pickup" ? "" : "opacity:.6"}">🟦 <b>استلام:</b> ${esc(d.sender_name)} – ${esc(d.pickup_area)}${d.pickup_address ? "، " + esc(d.pickup_address) : ""}
-        <div class="acts"><a class="btn sm ghost" href="tel:+${esc(d.sender_phone)}">📞 اتصال</a><a class="btn sm ghost" target="_blank" rel="noopener" href="${maps(d.pickup_area, d.pickup_address)}">🗺️ خريطة</a></div></div>
+        <div class="acts"><a class="btn sm ghost" href="tel:+${esc(d.sender_phone)}">📞 اتصال</a><a class="btn sm ghost" target="_blank" rel="noopener" href="${maps(d.pickup_area, d.pickup_address)}">🗺️ خريطة</a>${d.status === "assigned" ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${waMsg(d, "s")}">🛵 أنا في الطريق</a>` : ""}</div></div>
       <div class="ad" style="${step === "drop" ? "" : "opacity:.6"}">🟩 <b>تسليم:</b> ${esc(d.receiver_name)} – ${esc(d.drop_area)}${d.drop_address ? "، " + esc(d.drop_address) : ""}
-        <div class="acts"><a class="btn sm ghost" href="tel:+${esc(d.receiver_phone)}">📞 اتصال</a><a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${esc(d.receiver_phone)}">💬 واتساب</a><a class="btn sm ghost" target="_blank" rel="noopener" href="${maps(d.drop_area, d.drop_address)}">🗺️ خريطة</a></div></div>
+        <div class="acts"><a class="btn sm ghost" href="tel:+${esc(d.receiver_phone)}">📞 اتصال</a><a class="btn sm ghost" target="_blank" rel="noopener" href="${waMsg(d, "r")}">🛵 أنا في الطريق</a><a class="btn sm ghost" target="_blank" rel="noopener" href="${maps(d.drop_area, d.drop_address)}">🗺️ خريطة</a></div></div>
       ${d.package ? `<div class="mut">📦 ${esc(d.package)}</div>` : ""}${d.schedule ? `<div class="mut">⏰ ${esc(d.schedule)}</div>` : ""}${d.notes ? `<div class="mut">📝 ${esc(d.notes)}</div>` : ""}
       <div style="margin-top:8px">${c ? `<span class="pill cod">💵 حصّل ${money(c)}</span>` : `<span class="pill">مدفوع – مفيش تحصيل</span>`}</div>
+      ${["assigned", "picked_up"].includes(d.status) ? `<a class="btn block" style="margin-top:8px;text-align:center;text-decoration:none;background:#1a73e8" target="_blank" rel="noopener" href="${route(d)}">🧭 ابدأ التوجيه ${d.status === "assigned" ? "(استلام ← تسليم)" : "للمستلم"}</a>` : ""}
+      ${d.proof_url && d.status === "delivered" ? `<img src="${esc(d.proof_url)}" alt="" class="proof" style="max-height:140px;margin-top:8px">` : ""}
       ${act ? `<div class="acts">${act}</div>` : ""}</div>`;
   }
   const offerLeft = (d) => Math.round((new Date(d.offered_at).getTime() + (num(D.set.offer_seconds) || 60) * 1000 - Date.now()) / 1000);
@@ -52,12 +63,14 @@
     const paid = D.setl.filter((x) => x.kind === "driver_payout").reduce((a, x) => a + num(x.amount), 0);
     const rated = mine.filter((d) => d.rating);
     const todayDel = del.filter((d) => today(d.delivered_at));
-    return { del, todayDel, todayEarn: earn(todayDel), week: earn(since(7)), month: earn(since(30)), total: earn(del), col, hand, paid, cash: col - hand, bal: col - hand - earn(del) + paid,
+    const days = [...Array(7)].map((_, i) => { const t = new Date(); t.setHours(0, 0, 0, 0); t.setDate(t.getDate() - (6 - i)); const e = new Date(t); e.setDate(e.getDate() + 1); const ds = del.filter((d) => { const x = new Date(d.delivered_at); return x >= t && x < e; }); return { lbl: t.toLocaleDateString("ar-KW", { weekday: "short" }), n: ds.length, m: earn(ds) }; });
+    return { days, wN: since(7).length, mN: since(30).length, del, todayDel, todayEarn: earn(todayDel), week: earn(since(7)), month: earn(since(30)), total: earn(del), col, hand, paid, cash: col - hand, bal: col - hand - earn(del) + paid,
       avg: rated.length ? Math.round((rated.reduce((a, d) => a + d.rating, 0) / rated.length) * 10) / 10 : null, rated };
   }
   function walletView(W) {
-    return `<div class="stats"><div class="stat"><span class="mut">أرباح النهارده (${W.todayDel.length} شحنة)</span><b style="color:#16a34a">${money(W.todayEarn)}</b></div><div class="stat"><span class="mut">آخر 7 أيام</span><b>${money(W.week)}</b></div>
-      <div class="stat"><span class="mut">آخر 30 يوم</span><b>${money(W.month)}</b></div><div class="stat"><span class="mut">تقييمك</span><b>${W.avg ? `⭐ ${W.avg}` : "—"}</b><small class="mut">${W.rated.length} تقييم</small></div></div>
+    return `<div class="stats"><div class="stat"><span class="mut">أرباح النهارده (${W.todayDel.length} شحنة)</span><b style="color:#16a34a">${money(W.todayEarn)}</b></div><div class="stat"><span class="mut">آخر 7 أيام (${W.wN} شحنة)</span><b>${money(W.week)}</b></div>
+      <div class="stat"><span class="mut">آخر 30 يوم (${W.mN} شحنة)</span><b>${money(W.month)}</b></div><div class="stat"><span class="mut">تقييمك</span><b>${W.avg ? `⭐ ${W.avg}` : "—"}</b><small class="mut">${W.rated.length} تقييم</small></div></div>
+      <div class="card"><b>📊 آخر 7 أيام</b><div style="display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:10px">${W.days.map((x) => { const mx = Math.max(1, ...W.days.map((y) => y.n)); return `<div style="flex:1;text-align:center;font-size:11px"><div class="mut">${x.n || ""}</div><div style="height:${Math.round((x.n / mx) * 80) + 2}px;background:#0ea5e9;border-radius:6px 6px 0 0"></div><div class="mut">${x.lbl}</div></div>`; }).join("")}</div></div>
       <div class="card"><b>💼 حسابك مع الشركة</b>
         <div class="line"><span>💵 كاش حصّلته من الزباين</span><b>${money(W.col)}</b></div>
         <div class="line"><span>− سلّمته للشركة</span><b>${money(W.hand)}</b></div>
@@ -90,12 +103,12 @@
   function startLoc() {
     if (!navigator.geolocation) return toast("الجهاز مش بيدعم الموقع", "err");
     D.watch = navigator.geolocation.watchPosition((p) => {
-      if (!D.sharing) { D.sharing = true; render(); toast("📍 موقعك بيتشارك"); }
+      if (!D.sharing) { D.sharing = true; keepAwake(true); render(); toast("📍 موقعك بيتشارك"); }
       D.lastLoc = [p.coords.latitude, p.coords.longitude];
       if (Date.now() - D.lastPing > 25000) { D.lastPing = Date.now(); Store.driverPing(p.coords.latitude, p.coords.longitude).then(() => refresh()).catch(() => {}); }
     }, (e) => { toast(e.code === 1 ? "اسمح للتطبيق بالموقع من الإعدادات" : "تعذر تحديد الموقع", "err"); stopLoc(); }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
   }
-  function stopLoc() { if (D.watch != null) navigator.geolocation.clearWatch(D.watch); D.watch = null; D.sharing = false; if (D.me) render(); }
+  function stopLoc() { if (D.watch != null) navigator.geolocation.clearWatch(D.watch); D.watch = null; D.sharing = false; keepAwake(false); alarm(false); if (D.me) render(); }
 
   function doneSheet(id) {
     const d = D.list.find((x) => x.id === id), c = collectOf(d);
@@ -123,7 +136,7 @@
     const el = e.target.closest("[data-demo],[data-go],[data-tab],[data-done],[data-fail],[data-acc],[data-rej]"); if (!el) return;
     if (el.dataset.acc || el.dataset.rej) {
       el.disabled = true;
-      try { await Store.driverRespond(el.dataset.acc || el.dataset.rej, !!el.dataset.acc); toast(el.dataset.acc ? "✅ الشحنة بقت عليك – روح للاستلام" : "اترفضت"); D.tab = "active"; }
+      alarm(false); try { await Store.driverRespond(el.dataset.acc || el.dataset.rej, !!el.dataset.acc); toast(el.dataset.acc ? "✅ الشحنة بقت عليك – روح للاستلام" : "اترفضت"); D.tab = "active"; }
       catch (err) { toast(String(err.message).includes("OFFER_GONE") ? "العرض خلص وقته أو راح لمندوب تاني" : err.message, "err"); }
       await refresh(); return;
     }
@@ -133,12 +146,25 @@
     else if (el.dataset.fail) failSheet(el.dataset.fail);
     else if (el.dataset.go) { const [id, st] = el.dataset.go.split(":"); el.disabled = true; try { await Store.driverUpdate(id, st); toast("بالتوفيق 🛵 – روح للمستلم"); await refresh(); } catch (err) { toast(err.message, "err"); el.disabled = false; } }
   });
-  function beep() { try { const c = new (window.AudioContext || window.webkitAudioContext)(); [0, 250, 500].forEach((t) => { const o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = 988; g.gain.value = 0.25; o.start(c.currentTime + t / 1000); o.stop(c.currentTime + t / 1000 + 0.18); }); setTimeout(() => c.close(), 1200); } catch (e) {} }
+  let alarmT = null, wake = null;
+  function alarm(on) {
+    if (on && !alarmT) { const ring = () => { beep(); try { navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) {} }; ring(); alarmT = setInterval(ring, 2500); }
+    if (!on && alarmT) { clearInterval(alarmT); alarmT = null; }
+  }
+  async function keepAwake(on) {
+    try { if (on && !wake && navigator.wakeLock) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => (wake = null)); } if (!on && wake) { await wake.release(); wake = null; } } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && D.sharing) keepAwake(true); });
+  let AC = null;
+  const unlockAudio = () => { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === "suspended") AC.resume(); } catch (e) {} };
+  document.addEventListener("touchend", unlockAudio, { passive: true }); document.addEventListener("click", unlockAudio);
+  function beep() { try { unlockAudio(); const c = AC; [0, 250, 500].forEach((t) => { const o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.type = "square"; o.frequency.value = 1175; g.gain.value = 0.6; o.start(c.currentTime + t / 1000); o.stop(c.currentTime + t / 1000 + 0.18); }); } catch (e) {} }
   async function refresh() {
     if (D.sharing) await Store.dispatchTick();
     [D.list, D.setl] = await Promise.all([Store.driverDeliveries(), Store.settlements()]);
     const keys = new Set(D.list.map((o) => o.id + ":" + (o.offered_to === D.me.id ? "o" : o.driver_id === D.me.id ? "m" : "")));
     if (D.known && [...keys].some((k) => !D.known.has(k) && !k.endsWith(":"))) { toast("🔔 شحنة جديدة عليك"); beep(); try { navigator.vibrate && navigator.vibrate([300, 100, 300, 100, 300]); } catch (e) {} }
+    alarm(D.list.some((d) => d.status === "new" && d.offered_to === D.me.id && offerLeft(d) > 0));
     D.known = keys; if (!document.getElementById("sheet")) render();
   }
   async function boot() {
