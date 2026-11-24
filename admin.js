@@ -46,7 +46,7 @@
   const TABS = [["dash", "📊 الرئيسية"], ["dels", "📦 الشحنات"], ["map", "🗺️ الخريطة"], ["merch", "🏪 المحلات"], ["drv", "🛵 المناديب"], ["prices", "💰 الأسعار"], ["set", "⚙️ الإعدادات"]];
   function render() {
     const newCount = A.list.filter((d) => d.status === "new").length;
-    $("app").innerHTML = `<header class="top"><div class="wrap"><div class="row"><div class="brand">${LOGO}<div>${esc(A.settings.company_name || "Goten Delivery")}<small>لوحة التحكم</small></div></div><div class="sp"></div><button class="chip-btn" id="pushBtn">${UI.pushState() === "granted" ? "🔔" : "🔕 فعّل"}</button><button class="chip-btn" id="refBtn">🔄</button><button class="chip-btn" id="outBtn">خروج</button></div>
+    $("app").innerHTML = `<header class="top"><div class="wrap"><div class="row"><div class="brand">${LOGO}<div>${esc(A.settings.company_name || "Guten Delivery")}<small>لوحة التحكم</small></div></div><div class="sp"></div><button class="chip-btn" id="pushBtn">${UI.pushState() === "granted" ? "🔔" : "🔕 فعّل"}</button><button class="chip-btn" id="refBtn">🔄</button><button class="chip-btn" id="outBtn">خروج</button></div>
       <div class="tabs">${TABS.map(([k, l]) => `<button class="${A.tab === k ? "on" : ""}" data-tab="${k}">${l}${k === "dels" && newCount ? ` (${newCount})` : ""}</button>`).join("")}</div></div></header>
       <main><div class="wrap" id="body">${({ dash, dels, map: mapV, merch, drv, prices, set })[A.tab]()}</div></main>`;
     $("outBtn").onclick = async () => { await Store.signOut(); loginView(); };

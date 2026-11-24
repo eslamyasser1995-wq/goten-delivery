@@ -26,7 +26,7 @@
     const zones = Object.keys(UI.AREAS), prices = [];
     zones.forEach((a) => zones.forEach((b) => prices.push({ from_zone: a, to_zone: b, price: a === b ? 1 : 1.5 })));
     return {
-      settings: { company_name: "Goten Delivery", tagline: "توصيل سريع لكل مناطق الكويت", is_open: true, whatsapp: "", notice: "نسخة تجريبية – البيانات على هذا الجهاز فقط", auto_dispatch: true, offer_seconds: 60, max_active: 3, driver_pay_type: "fixed", driver_pay: 0.5 },
+      settings: { company_name: "Guten Delivery", tagline: "توصيل سريع لكل مناطق الكويت", is_open: true, whatsapp: "", notice: "نسخة تجريبية – البيانات على هذا الجهاز فقط", auto_dispatch: true, offer_seconds: 60, max_active: 3, driver_pay_type: "fixed", driver_pay: 0.5 },
       prices, deliveries: [], settlements: [], locations: [], nextNo: 1001,
       profiles: [
         { id: "d1", full_name: "سالم (مندوب تجريبي)", phone: "96599990001", role: "driver" },

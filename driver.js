@@ -2,7 +2,7 @@
 (function () {
   const { esc, money, toast, fmtDate, LOGO, num, sheet, closeSheet, DST } = UI;
   const $ = (id) => document.getElementById(id);
-  const D = { set: {}, lastLoc: null, me: null, list: [], setl: [], tab: "active", known: null, name: "Goten Delivery", watch: null, lastPing: 0, sharing: false };
+  const D = { set: {}, lastLoc: null, me: null, list: [], setl: [], tab: "active", known: null, name: "Guten Delivery", watch: null, lastPing: 0, sharing: false };
   const collectOf = (d) => num(d.cod_amount) + (d.fee_payer === "receiver" ? num(d.fee) : 0);
   const today = (d) => d && new Date(d).toDateString() === new Date().toDateString();
   const maps = (area, addr) => "https://maps.google.com/?q=" + encodeURIComponent((addr ? addr + " " : "") + area + " الكويت");

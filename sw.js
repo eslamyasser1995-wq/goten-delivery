@@ -1,5 +1,5 @@
 // Service worker – الشبكة أولاً علشان التحديثات توصل فوراً
-const CACHE = "goten-delivery-v5";
+const CACHE = "goten-delivery-v6";
 self.addEventListener("install", (e) => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {
@@ -10,8 +10,8 @@ self.addEventListener("fetch", (e) => {
 
 // الإشعارات
 self.addEventListener("push", (e) => {
-  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) { d = { title: "Goten Delivery", body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Goten Delivery", { body: d.body || "", icon: "icon-192.png", badge: "icon-192.png", data: { url: d.url || "admin.html" }, tag: d.tag, renotify: true }));
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) { d = { title: "Guten Delivery", body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || "Guten Delivery", { body: d.body || "", icon: "icon-192.png", badge: "icon-192.png", data: { url: d.url || "admin.html" }, tag: d.tag, renotify: true }));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();

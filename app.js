@@ -18,7 +18,7 @@
   function header() {
     const s = S.settings;
     return `<header class="shop-top"><div class="wrap"><div class="shop-row"><div class="shop-side"></div>
-      <div class="shop-brand">${s.logo ? `<img src="${esc(s.logo)}" alt="">` : LOGO}<span>${esc(s.company_name || "Goten Delivery")}</span></div>
+      <div class="shop-brand">${s.logo ? `<img src="${esc(s.logo)}" alt="">` : LOGO}<span>${esc(s.company_name || "Guten Delivery")}</span></div>
       <div class="shop-side end">${s.whatsapp ? `<a class="icon-btn" target="_blank" rel="noopener" href="https://wa.me/${esc(s.whatsapp)}" aria-label="whatsapp">💬</a>` : ""}</div></div></div></header>`;
   }
   function field(id, label, val, type = "text", extra = "") { return `<label class="f"><span>${label}</span><input class="in" id="${id}" type="${type}" value="${esc(val || "")}" ${extra}></label>`; }
@@ -172,7 +172,7 @@
 
   async function boot() {
     const [s, p, me] = await Promise.all([Store.settings(), Store.prices(), Store.me()]);
-    S.settings = s || {}; S.prices = p || []; S.me = me; document.title = S.settings.company_name || "Goten Delivery";
+    S.settings = s || {}; S.prices = p || []; S.me = me; document.title = S.settings.company_name || "Guten Delivery";
     await loadList(); render();
   }
   (async () => {
