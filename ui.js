@@ -61,7 +61,7 @@
 
   const fmtDate = (d) => { try { return new Date(d).toLocaleString("ar-KW", { dateStyle: "short", timeStyle: "short" }); } catch (e) { return d; } };
 
-  const LOGO = '<img src="icon-192.png" alt="" style="width:38px;height:38px;border-radius:10px;object-fit:cover">';
+  const LOGO = '<img src="icon-192.png?v=5" alt="" style="width:38px;height:38px;border-radius:10px;object-fit:cover">';
 
   // تفعيل إشعارات الطلبات (آيفون: لازم التطبيق يكون متضاف للشاشة الرئيسية)
   const VAPID = (window.ISLAMKO_CONFIG || {}).VAPID_PUBLIC || "BLJPBQpfAO6iyV7bK8dWMAxjR_b68wlAK5upO5n4eJYoCGibkVNRfBT_Bv1cSADD_ltb4U9PacaINZW9zuOn_Gw";
