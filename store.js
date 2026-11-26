@@ -98,9 +98,12 @@
     async createDelivery(p) {
       if (LIVE) return chk(await sb.rpc("create_delivery", { p }));
       const d = db(); if (!d.settings.is_open) throw new Error("CLOSED");
-      const { z1, z2, fee } = demoPrice(p.pickup_area, p.drop_area);
-      const me = sess.get();
-      const row = { ...p, id: uid(), no: d.nextNo++, merchant_id: me && (me.role === "merchant" || me.role === "driver") ? me.id : null, pickup_zone: z1, drop_zone: z2, fee, cod_amount: Number(p.cod_amount || 0), fee_payer: p.fee_payer === "receiver" ? "receiver" : "sender", status: "new", driver_id: null, created_at: nowISO(), updated_at: nowISO() };
+      let { z1, z2, fee } = demoPrice(p.pickup_area, p.drop_area);
+      const me = sess.get(), st = d.settings;
+      if (st.price_mode === "km" && z1 && z2) { const A1 = UI.ZLL[z1], A2 = UI.ZLL[z2], k = z1 === z2 ? 0 : UI.km(A1, A2); fee = Math.max(Number(st.min_fee || 0), Math.round((Number(st.base_fee || 0) + Number(st.per_km || 0) * k) * 4) / 4); if (Number(st.max_fee) > 0) fee = Math.min(fee, Number(st.max_fee)); }
+      if (me && me.role === "admin" && p.fee_override !== undefined && p.fee_override !== "" && p.fee_override !== null) fee = Math.max(0, Number(p.fee_override));
+      delete p.fee_override;
+      const row = { ...p, id: uid(), no: d.nextNo++, merchant_id: me && (me.role === "merchant" || me.role === "driver") ? me.id : me && me.role === "admin" && p.merchant_id ? p.merchant_id : null, pickup_zone: z1, drop_zone: z2, fee, cod_amount: Number(p.cod_amount || 0), fee_payer: p.fee_payer === "receiver" ? "receiver" : "sender", status: "new", driver_id: null, created_at: nowISO(), updated_at: nowISO() };
       d.deliveries.unshift(row); demoDispatch(row.id); persist();
       return { id: row.id, no: row.no, fee };
     },
@@ -110,7 +113,7 @@
       const dr = d.profiles.find((p) => p.id === x.driver_id), loc = d.locations.find((l) => l.driver_id === x.driver_id);
       const live = ["assigned", "picked_up"].includes(x.status);
       const rs = d.deliveries.filter((y) => y.driver_id === x.driver_id && y.rating);
-      return { ...x, driver_avg: rs.length ? Math.round((rs.reduce((a, y) => a + y.rating, 0) / rs.length) * 10) / 10 : null, driver_name: dr && dr.full_name, driver_phone: dr && dr.phone, lat: live && loc ? loc.lat : null, lng: live && loc ? loc.lng : null, loc_at: live && loc ? loc.updated_at : null };
+      return { ...x, driver_avg: rs.length ? Math.round((rs.reduce((a, y) => a + y.rating, 0) / rs.length) * 10) / 10 : null, driver_name: dr && dr.full_name, driver_phone: dr && dr.phone, lat: live && loc ? loc.lat : null, lng: live && loc ? loc.lng : null, loc_at: live && loc ? loc.updated_at : null, ...(() => { const P = UI.ZLL[x.pickup_zone], Q = UI.ZLL[x.drop_zone]; return { p_lat: P && P[0], p_lng: P && P[1], d_lat: Q && Q[0], d_lng: Q && Q[1] }; })() };
     },
     async deliveries() {
       if (LIVE) return chk(await sb.from("deliveries").select("*").order("created_at", { ascending: false }).limit(1000));

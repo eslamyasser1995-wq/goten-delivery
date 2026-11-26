@@ -167,5 +167,19 @@
     return { min, at: at.toLocaleTimeString("ar-KW", { hour: "numeric", minute: "2-digit" }) };
   }
   const stars = (n, size = 18) => "★★★★★".slice(0, Math.round(n)).padEnd(5, "☆").split("").map((c) => `<span style="color:${c === "★" ? "#f59e0b" : "#cbd5e1"};font-size:${size}px">★</span>`).join("");
-  window.UI = { lastEmail, ZLL, km, eta, stars, forgot, recover, DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
+  // Excel حقيقي (SheetJS) + طباعة PDF
+  let _x = null;
+  function loadXLSX() { if (window.XLSX) return Promise.resolve(window.XLSX); return _x || (_x = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"; sc.onload = () => res(window.XLSX); sc.onerror = () => { _x = null; rej(new Error("تعذر تحميل Excel – جرّب تاني")); }; document.head.appendChild(sc); })); }
+  async function xlsx(name, sheets) {
+    const X = await loadXLSX(), wb = X.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] };
+    sheets.forEach(([n, rows]) => { const ws = X.utils.aoa_to_sheet(rows); ws["!cols"] = (rows[0] || []).map((_, i) => ({ wch: Math.min(40, Math.max(10, ...rows.map((r) => String(r[i] == null ? "" : r[i]).length + 2))) })); ws["!views"] = [{ RTL: true }]; X.utils.book_append_sheet(wb, ws, String(n).slice(0, 30).replace(/[\\/?*\[\]:]/g, " ")); });
+    X.writeFile(wb, name.replace(/[\\/?*:|"<>]/g, "-") + ".xlsx");
+  }
+  function printDoc(title, body) {
+    const w = open("", "_blank"); if (!w) return toast("اسمح بفتح النوافذ علشان الطباعة", "err");
+    w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>body{font-family:-apple-system,Tahoma,Arial,sans-serif;padding:18px;color:#0f172a}h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:18px 0 6px}.m{color:#64748b;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right}th{background:#f1f5f9}.t td{font-weight:700;background:#f8fafc}.k{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.k div{border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px}.k b{display:block;font-size:17px}@media print{button{display:none}}</style></head><body>${body}<p class="m" style="margin-top:20px">اتطبع ${new Date().toLocaleString("ar-EG")}</p><button onclick="print()" style="padding:10px 18px;font-size:16px;margin-top:10px">🖨️ طباعة / حفظ PDF</button><script>setTimeout(()=>print(),400)<\/script></body></html>`);
+    w.document.close();
+  }
+  const tbl = (head, rows, foot) => `<table><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c == null ? "" : c)}</td>`).join("")}</tr>`).join("")}${foot ? `<tr class="t">${foot.map((c) => `<td>${esc(c == null ? "" : c)}</td>`).join("")}</tr>` : ""}</table>`;
+  window.UI = { xlsx, printDoc, tbl, lastEmail, ZLL, km, eta, stars, forgot, recover, DST, DFLOW, zoneOf, ago, leaflet, makeMap, pushState, enablePush, LOGO, ask, esc, money, num, ls, toast, sheet, closeSheet, STATUS, STATUS_FLOW, AREAS, fmtDate };
 })();

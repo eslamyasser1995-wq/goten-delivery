@@ -3,7 +3,7 @@
   const { esc, money, num, toast, sheet, closeSheet, fmtDate, LOGO, DST, AREAS, ask, makeMap, ago } = UI;
   const $ = (id) => document.getElementById(id);
   const ZONES = Object.keys(AREAS);
-  const A = { tab: "dash", list: [], profiles: [], setl: [], prices: [], locs: [], settings: {}, filter: "open", known: null, q: "" };
+  const A = { rp: "month", rd: new Date().toISOString().slice(0, 10), tab: "dash", list: [], profiles: [], setl: [], prices: [], locs: [], settings: {}, filter: "open", known: null, q: "" };
   const collectOf = (d) => num(d.cod_amount) + (d.fee_payer === "receiver" ? num(d.fee) : 0);
   const today = (d) => d && new Date(d).toDateString() === new Date().toDateString();
   const drivers = () => A.profiles.filter((p) => p.role === "driver");
@@ -43,16 +43,17 @@
   }
 
   // ---------- التبويبات ----------
-  const TABS = [["dash", "📊 الرئيسية"], ["dels", "📦 الشحنات"], ["map", "🗺️ الخريطة"], ["merch", "🏪 المحلات"], ["drv", "🛵 المناديب"], ["prices", "💰 الأسعار"], ["set", "⚙️ الإعدادات"]];
+  const TABS = [["dash", "📊 الرئيسية"], ["rep", "📑 التقارير"], ["dels", "📦 الشحنات"], ["map", "🗺️ الخريطة"], ["merch", "🏪 المحلات"], ["drv", "🛵 المناديب"], ["prices", "💰 الأسعار"], ["set", "⚙️ الإعدادات"]];
   function render() {
     const newCount = A.list.filter((d) => d.status === "new").length;
     $("app").innerHTML = `<header class="top"><div class="wrap"><div class="row"><div class="brand">${LOGO}<div>${esc(A.settings.company_name || "Guten Delivery")}<small>لوحة التحكم</small></div></div><div class="sp"></div><button class="chip-btn" id="pushBtn">${UI.pushState() === "granted" ? "🔔" : "🔕 فعّل"}</button><button class="chip-btn" id="refBtn">🔄</button><button class="chip-btn" id="outBtn">خروج</button></div>
       <div class="tabs">${TABS.map(([k, l]) => `<button class="${A.tab === k ? "on" : ""}" data-tab="${k}">${l}${k === "dels" && newCount ? ` (${newCount})` : ""}</button>`).join("")}</div></div></header>
-      <main><div class="wrap" id="body">${({ dash, dels, map: mapV, merch, drv, prices, set })[A.tab]()}</div></main>`;
+      <main><div class="wrap" id="body">${({ dash, rep: reports, dels, map: mapV, merch, drv, prices, set })[A.tab]()}</div></main>`;
     $("outBtn").onclick = async () => { await Store.signOut(); loginView(); };
     $("pushBtn").onclick = async () => { try { await UI.enablePush((x) => Store.savePush(x)); toast("✅ الإشعارات اتفعّلت – هيجيلك إشعار مع كل شحنة جديدة"); render(); } catch (e) { toast(/save_push/.test(e.message) ? "شغّل كود الإشعارات SQL الأول" : e.message, "err"); } };
     $("refBtn").onclick = () => load().then(() => toast("اتحدّث ✓"));
     if (A.tab === "map") drawMap();
+    if (A.tab === "rep") { $("rp").onchange = () => { A.rp = $("rp").value; render(); }; $("rd").onchange = () => { A.rd = $("rd").value || A.rd; render(); }; $("repX").onclick = () => repXlsx().catch((e) => toast(e.message, "err")); $("repP").onclick = repPrint; }
     if (A.tab === "dels") { const q = $("q"); if (q) q.oninput = () => { A.q = q.value; const p = q.selectionStart; render(); const n = $("q"); n.focus(); n.setSelectionRange(p, p); }; }
   }
 
@@ -71,6 +72,49 @@
       ${pend ? `<div class="notice" data-tab="drv" style="cursor:pointer">⏳ فيه ${pend} حساب مستني موافقتك – اضغط هنا</div>` : ""}
       <div class="card"><b>حالة الشحنات</b>${Object.keys(DST).map((s) => `<div class="line"><span><span class="st" style="background:${DST[s].c}">${DST[s].ar}</span></span><b>${cnt(s)}</b></div>`).join("")}</div>
       <div class="card"><b>🔗 روابط التطبيق</b><p class="mut" style="font-size:13px">صفحة الطلب للزباين والمحلات: <b>index.html</b><br>صفحة المناديب: <b>driver.html</b></p></div>`;
+  }
+
+  // ---------- التقارير ----------
+  const RP = { day: "يومي", month: "شهري", year: "سنوي" };
+  function repData() {
+    const d0 = new Date(A.rd + "T00:00:00"), key = (x) => { const t = new Date(x); return A.rp === "day" ? t.toDateString() === d0.toDateString() : A.rp === "month" ? t.getFullYear() === d0.getFullYear() && t.getMonth() === d0.getMonth() : t.getFullYear() === d0.getFullYear(); };
+    const created = A.list.filter((d) => key(d.created_at)), done = A.list.filter((d) => d.status === "delivered" && key(d.delivered_at || d.updated_at));
+    const failed = created.filter((d) => d.status === "failed"), canc = created.filter((d) => d.status === "cancelled");
+    const fees = done.reduce((a, d) => a + num(d.fee), 0), earn = done.reduce((a, d) => a + num(d.driver_earning), 0), cod = done.reduce((a, d) => a + num(d.cod_amount), 0);
+    const setl = A.setl.filter((x) => key(x.created_at)), sum = (k) => setl.filter((x) => x.kind === k).reduce((a, x) => a + num(x.amount), 0);
+    const group = (f, lab) => { const m = {}; done.forEach((d) => { const k = f(d) || "—"; (m[k] = m[k] || { n: 0, fee: 0, cod: 0, earn: 0, r: [] }); m[k].n++; m[k].fee += num(d.fee); m[k].cod += num(d.cod_amount); m[k].earn += num(d.driver_earning); if (d.rating) m[k].r.push(d.rating); }); return Object.entries(m).map(([k, v]) => ({ k: lab(k), ...v, avg: v.r.length ? (v.r.reduce((a, b) => a + b, 0) / v.r.length).toFixed(1) : "" })).sort((a, b) => b.n - a.n); };
+    const byTime = {}; done.forEach((d) => { const t = new Date(d.delivered_at || d.updated_at), k = A.rp === "day" ? String(t.getHours()).padStart(2, "0") + ":00" : A.rp === "month" ? t.toISOString().slice(0, 10) : t.toISOString().slice(0, 7); (byTime[k] = byTime[k] || { n: 0, fee: 0 }); byTime[k].n++; byTime[k].fee += num(d.fee); });
+    const label = A.rp === "day" ? d0.toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : A.rp === "month" ? d0.toLocaleDateString("ar-EG", { month: "long", year: "numeric" }) : String(d0.getFullYear());
+    return { label, created, done, failed, canc, fees, earn, cod, net: fees - earn, hand: sum("driver_handover"), dpay: sum("driver_payout"), mpay: sum("merchant_payout"),
+      byDrv: group((d) => d.driver_id, pname), byMer: group((d) => d.merchant_id, (k) => (k === "—" ? "أفراد" : pname(k))), byZone: group((d) => d.drop_zone, (k) => k), byTime: Object.entries(byTime).sort(), done };
+  }
+  function reports() {
+    const r = repData(), rate = r.created.length ? Math.round((r.done.length / r.created.length) * 100) : 0;
+    const gt = (t, g) => `<div class="card"><b>${t}</b>${g.length ? g.map((x) => `<div class="line"><span>${esc(x.k)} · ${x.n} شحنة${x.avg ? ` · ⭐ ${x.avg}` : ""}</span><b>${money(x.fee)}</b></div>`).join("") : `<p class="mut">مفيش</p>`}</div>`;
+    return `<div class="card" style="margin-top:12px"><div class="row2"><select class="in" id="rp">${Object.entries(RP).map(([k, l]) => `<option value="${k}" ${A.rp === k ? "selected" : ""}>${l}</option>`).join("")}</select><input class="in" type="date" id="rd" value="${A.rd}"></div>
+      <div class="mut" style="margin-top:6px">📅 ${esc(r.label)}</div><div class="acts" style="margin-top:8px"><button class="btn sm green" id="repX">📊 Excel</button><button class="btn sm tq" id="repP">🖨️ PDF</button></div></div>
+      <div class="stats"><div class="stat"><span class="mut">طلبات</span><b>${r.created.length}</b></div><div class="stat"><span class="mut">اتسلمت</span><b style="color:#16a34a">${r.done.length}</b><small class="mut">${rate}%</small></div>
+      <div class="stat"><span class="mut">فشلت / ملغية</span><b style="color:#dc2626">${r.failed.length} / ${r.canc.length}</b></div><div class="stat"><span class="mut">إيراد التوصيل</span><b>${money(r.fees)}</b></div>
+      <div class="stat"><span class="mut">أرباح المناديب</span><b style="color:#b45309">${money(r.earn)}</b></div><div class="stat"><span class="mut">صافي الشركة</span><b style="color:${r.net >= 0 ? "#16a34a" : "#dc2626"}">${money(r.net)}</b></div>
+      <div class="stat"><span class="mut">تحصيل من الزباين</span><b>${money(r.cod)}</b></div><div class="stat"><span class="mut">اتحوّل للمحلات</span><b>${money(r.mpay)}</b></div></div>
+      <div class="card"><b>💵 حركة الفلوس</b><div class="line"><span>كاش استلمته من المناديب</span><b>${money(r.hand)}</b></div><div class="line"><span>أرباح صرفتها للمناديب</span><b>${money(r.dpay)}</b></div><div class="line"><span>تحويلات للمحلات</span><b>${money(r.mpay)}</b></div></div>
+      ${gt("🛵 حسب المندوب", r.byDrv)}${gt("🏪 حسب المحل", r.byMer)}${gt("📍 حسب المحافظة", r.byZone)}
+      <div class="card"><b>📈 ${A.rp === "day" ? "حسب الساعة" : A.rp === "month" ? "حسب اليوم" : "حسب الشهر"}</b>${r.byTime.length ? r.byTime.map(([k, v]) => `<div class="line"><span>${k} · ${v.n} شحنة</span><b>${money(v.fee)}</b></div>`).join("") : `<p class="mut">مفيش شحنات اتسلمت في الفترة دي</p>`}</div>`;
+  }
+  const f3 = (x) => +num(x).toFixed(3);
+  async function repXlsx() {
+    const r = repData(), G = (g) => [["الاسم", "شحنات", "إيراد التوصيل", "التحصيل", "أرباح المندوب", "متوسط التقييم"], ...g.map((x) => [x.k, x.n, f3(x.fee), f3(x.cod), f3(x.earn), x.avg])];
+    await UI.xlsx(`تقرير-${RP[A.rp]}-${A.rd}`, [
+      ["الملخص", [["البند", "القيمة"], ["الفترة", r.label], ["طلبات", r.created.length], ["اتسلمت", r.done.length], ["فشلت", r.failed.length], ["ملغية", r.canc.length], ["إيراد التوصيل", f3(r.fees)], ["أرباح المناديب", f3(r.earn)], ["صافي الشركة", f3(r.net)], ["تحصيل من الزباين", f3(r.cod)], ["كاش من المناديب", f3(r.hand)], ["أرباح اتصرفت", f3(r.dpay)], ["تحويلات للمحلات", f3(r.mpay)]]],
+      ["الشحنات", [["رقم", "تاريخ التسليم", "المحل", "المرسل", "المستلم", "من", "إلى", "المندوب", "التوصيل", "على", "التحصيل", "ربح المندوب", "التقييم"], ...r.done.map((d) => [d.no, fmtDate(d.delivered_at), d.merchant_id ? pname(d.merchant_id) : "فرد", d.sender_name, d.receiver_name, d.pickup_area, d.drop_area, d.driver_id ? pname(d.driver_id) : "", f3(d.fee), d.fee_payer === "receiver" ? "المستلم" : "المرسل", f3(d.cod_amount), f3(d.driver_earning), d.rating || ""])]],
+      ["المناديب", G(r.byDrv)], ["المحلات", G(r.byMer)], ["المحافظات", G(r.byZone)], ["حسب الوقت", [["الوقت", "شحنات", "إيراد"], ...r.byTime.map(([k, v]) => [k, v.n, f3(v.fee)])]]]);
+  }
+  function repPrint() {
+    const r = repData(), G = (t, g) => `<h2>${t}</h2>` + UI.tbl(["الاسم", "شحنات", "إيراد التوصيل", "التحصيل", "أرباح المندوب", "التقييم"], g.map((x) => [x.k, x.n, x.fee.toFixed(3), x.cod.toFixed(3), x.earn.toFixed(3), x.avg]));
+    UI.printDoc("تقرير " + r.label, `<h1>📑 ${esc(A.settings.company_name || "Guten Delivery")} – تقرير ${RP[A.rp]}</h1><div class="m">${esc(r.label)}</div>
+      <div class="k"><div>طلبات<b>${r.created.length}</b></div><div>اتسلمت<b>${r.done.length}</b></div><div>فشلت/ملغية<b>${r.failed.length}/${r.canc.length}</b></div><div>إيراد التوصيل<b>${money(r.fees)}</b></div><div>أرباح المناديب<b>${money(r.earn)}</b></div><div>صافي الشركة<b>${money(r.net)}</b></div><div>تحصيل<b>${money(r.cod)}</b></div></div>
+      ${G("حسب المندوب", r.byDrv)}${G("حسب المحل", r.byMer)}${G("حسب المحافظة", r.byZone)}
+      <h2>الشحنات المسلّمة</h2>${UI.tbl(["رقم", "التاريخ", "المستلم", "إلى", "المندوب", "التوصيل", "التحصيل"], r.done.map((d) => [d.no, fmtDate(d.delivered_at), d.receiver_name, d.drop_area, d.driver_id ? pname(d.driver_id) : "", num(d.fee).toFixed(3), num(d.cod_amount).toFixed(3)]), ["الإجمالي", "", "", "", "", r.fees.toFixed(3), r.cod.toFixed(3)])}`);
   }
 
   // ---------- الشحنات ----------
@@ -100,19 +144,30 @@
   function newDeliverySheet() {
     const opts = `<option value="">اختر المنطقة</option>` + Object.entries(AREAS).map(([g, arr]) => `<optgroup label="${g}">${arr.map((x) => `<option>${x}</option>`).join("")}</optgroup>`).join("");
     const mopts = `<option value="">— فرد (مش محل) —</option>` + merchants().map((m) => `<option value="${m.id}">🏪 ${esc(m.business_name || m.full_name)}</option>`).join("");
+    const dopts = `<option value="">🤖 وزّع تلقائي / بعدين</option>` + drivers().map((p) => { const s = driverSt(p.id); return `<option value="${p.id}">${s.online ? "🟢" : "⚪"} ${esc(p.full_name || p.phone)} (معاه ${s.active})</option>`; }).join("");
     const f = (id, l, t = "text", x = "") => `<label class="f"><span>${l}</span><input class="in" id="${id}" type="${t}" ${x}></label>`;
-    sheet(`<h3>شحنة جديدة</h3><label class="f"><span>المحل</span><select class="in" id="nm">${mopts}</select></label>
+    const drop = (i) => `<div class="card" data-nd="${i}" style="padding:10px"><b>🟩 المستلم ${i + 1}</b>${i ? ` <button class="btn sm ghost" data-rmnd="${i}">✕</button>` : ""}<div class="row2">${f("nr" + i, "الاسم")}${f("nrp" + i, "الهاتف", "tel", 'inputmode="numeric" maxlength="8"')}</div><label class="f"><span>المنطقة</span><select class="in" id="nra${i}">${opts}</select></label>${f("nrd" + i, "العنوان")}${f("ncod" + i, "مبلغ التحصيل (د.ك)", "number", 'step="0.005" inputmode="decimal"')}</div>`;
+    sheet(`<h3>➕ طلب جديد (واتساب / تليفون)</h3><label class="f"><span>المحل</span><select class="in" id="nm">${mopts}</select></label>
       <b>🟦 المرسل</b><div class="row2">${f("ns", "الاسم")}${f("nsp", "الهاتف", "tel", 'inputmode="numeric" maxlength="8"')}</div><label class="f"><span>المنطقة</span><select class="in" id="nsa">${opts}</select></label>${f("nsd", "العنوان")}
-      <b>🟩 المستلم</b><div class="row2">${f("nr", "الاسم")}${f("nrp", "الهاتف", "tel", 'inputmode="numeric" maxlength="8"')}</div><label class="f"><span>المنطقة</span><select class="in" id="nra">${opts}</select></label>${f("nrd", "العنوان")}
-      ${f("npk", "الشحنة")}${f("ncod", "مبلغ التحصيل (د.ك)", "number", 'step="0.005" inputmode="decimal"')}
-      <label class="f"><span>التوصيل يدفعه</span><select class="in" id="npay"><option value="sender">المرسل</option><option value="receiver">المستلم</option></select></label>
-      <button class="btn tq block" id="nsave">حفظ الشحنة</button>`, () => {
+      <div id="nds">${drop(0)}</div><button class="btn ghost block" id="addNd" style="margin-bottom:10px">➕ عنوان تسليم تاني</button>
+      ${f("npk", "الشحنة")}
+      <div class="row2"><label class="f"><span>التوصيل يدفعه</span><select class="in" id="npay"><option value="sender">المرسل</option><option value="receiver">المستلم</option></select></label>${f("nfee", "سعر خاص (اختياري)", "number", 'step="0.25" inputmode="decimal" placeholder="حسب الأسعار"')}</div>
+      <label class="f"><span>🛵 ابعتها لمندوب على طول</span><select class="in" id="ndrv">${dopts}</select></label>
+      <button class="btn tq block" id="nsave">حفظ الطلب</button>`, () => {
+      let n = 1;
       $("nm").onchange = () => { const m = A.profiles.find((p) => p.id === $("nm").value); if (!m) return; $("ns").value = m.business_name || m.full_name || ""; $("nsp").value = String(m.phone || "").replace(/^965/, ""); $("nsa").value = m.pickup_area || ""; $("nsd").value = m.pickup_address || ""; };
+      $("addNd").onclick = () => { if (document.querySelectorAll("[data-nd]").length >= 10) return toast("أقصى 10 عناوين", "err"); $("nds").insertAdjacentHTML("beforeend", drop(n++)); };
+      $("nds").onclick = (e) => { const b = e.target.closest("[data-rmnd]"); if (b) document.querySelector(`[data-nd="${b.dataset.rmnd}"]`).remove(); };
       $("nsave").onclick = async () => {
-        const v = (id) => $(id).value.trim(), p8 = (x) => x.replace(/\D/g, "").replace(/^965(?=\d{8}$)/, "");
-        const p = { sender_name: v("ns"), sender_phone: "965" + p8(v("nsp")), pickup_area: v("nsa"), pickup_address: v("nsd"), receiver_name: v("nr"), receiver_phone: "965" + p8(v("nrp")), drop_area: v("nra"), drop_address: v("nrd"), package: v("npk"), cod_amount: num(v("ncod")), fee_payer: v("npay") };
-        if (p.sender_name.length < 2 || p.receiver_name.length < 2 || !p.pickup_area || !p.drop_area || p.sender_phone.length !== 11 || p.receiver_phone.length !== 11) return toast("كمّل الأسماء والأرقام (8 أرقام) والمناطق", "err");
-        try { const r = await Store.createDelivery(p); if (v("nm")) await Store.updateDelivery(r.id, { merchant_id: v("nm") }); closeSheet(); toast("اتسجّلت #" + r.no); await load(); } catch (e) { toast(e.message, "err"); }
+        const v = (id) => ($(id) ? $(id).value.trim() : ""), p8 = (x) => x.replace(/\D/g, "").replace(/^965(?=\d{8}$)/, "");
+        const base = { merchant_id: v("nm") || null, sender_name: v("ns"), sender_phone: "965" + p8(v("nsp")), pickup_area: v("nsa"), pickup_address: v("nsd"), package: v("npk"), fee_payer: v("npay"), fee_override: v("nfee") === "" ? null : num(v("nfee")) };
+        const ids = [...document.querySelectorAll("[data-nd]")].map((x) => x.dataset.nd);
+        const list = ids.map((i) => ({ ...base, receiver_name: v("nr" + i), receiver_phone: "965" + p8(v("nrp" + i)), drop_area: v("nra" + i), drop_address: v("nrd" + i), cod_amount: num(v("ncod" + i)) }));
+        if (base.sender_name.length < 2 || !base.pickup_area || base.sender_phone.length !== 11) return toast("كمّل اسم المرسل ورقمه (8 أرقام) ومنطقته", "err");
+        if (list.some((p) => p.receiver_name.length < 2 || !p.drop_area || p.receiver_phone.length !== 11)) return toast("كمّل أسماء وأرقام ومناطق المستلمين", "err");
+        $("nsave").disabled = true; const drv = v("ndrv"), ok = [], bad = [];
+        for (const p of list) { try { const r = await Store.createDelivery(p); if (drv) await Store.updateDelivery(r.id, { driver_id: drv, status: "assigned", offered_to: null }); ok.push(r.no); } catch (e) { bad.push(p.receiver_name + ": " + e.message); } }
+        closeSheet(); if (ok.length) toast(`اتسجّل ${ok.length > 1 ? ok.length + " شحنات" : "#" + ok[0]}${drv ? " واتبعت لـ " + pname(drv) : ""} ✓`); if (bad.length) toast("⚠️ " + bad.join(" · "), "err"); await load();
       };
     });
   }
@@ -146,7 +201,7 @@
         <div class="line"><span>💵 حصّل من الزباين</span><b>${money(s.col)}</b></div><div class="line"><span>− سلّم للشركة</span><b>${money(s.hand)}</b></div>
         <div class="line"><span>− أرباحه (النهارده ${money(s.todayEarn)})</span><b>${money(s.earn)}</b></div><div class="line"><span>+ اتصرفله</span><b>${money(s.paid)}</b></div>
         <div class="line total"><span>${s.bal >= 0 ? "عليه للشركة" : "ليه عند الشركة"}</span><span style="color:${s.bal > 0.0005 ? "#b45309" : "#16a34a"}">${money(Math.abs(s.bal))}</span></div>
-        <div class="acts"><button class="btn sm green" data-hand="${p.id}">💵 استلمت منه كاش</button><button class="btn sm tq" data-dpay="${p.id}">💸 صرفت له أرباح</button></div>`); }).join("") || `<p class="mut">المناديب بيسجّلوا من صفحة driver.html وبعدين توافق عليهم هنا.</p>`}
+        <div class="acts"><button class="btn sm green" data-hand="${p.id}">💵 استلمت منه كاش</button><button class="btn sm tq" data-dpay="${p.id}">💸 صرفت له أرباح</button><button class="btn sm ghost" data-revs="${p.id}">⭐ التقييمات</button><button class="btn sm ghost" data-dstmt="${p.id}">📊 Excel</button></div>`); }).join("") || `<p class="mut">المناديب بيسجّلوا من صفحة driver.html وبعدين توافق عليهم هنا.</p>`}
       ${others.length ? `<div class="h2">👑 الإدارة والمحظورين</div>${others.map((p) => userRow(p)).join("")}` : ""}
       ${!Store.live ? `<button class="btn ghost block" data-adddrv="1">➕ مندوب تجريبي</button>` : ""}`;
   }
@@ -159,20 +214,43 @@
     });
   }
   function stmtSheet(id) {
-    const rows = A.list.filter((d) => d.merchant_id === id && d.status === "delivered"), pays = A.setl.filter((x) => x.kind === "merchant_payout" && x.party === id), s = merchantSt(id);
-    const csv = () => { const L = [["رقم", "التاريخ", "المستلم", "المنطقة", "التحصيل", "التوصيل على المحل", "الصافي"]]; rows.forEach((d) => { const fee = d.fee_payer === "sender" ? num(d.fee) : 0; L.push([d.no, fmtDate(d.delivered_at), d.receiver_name, d.drop_area, num(d.cod_amount).toFixed(3), fee.toFixed(3), (num(d.cod_amount) - fee).toFixed(3)]); }); pays.forEach((x) => L.push(["تحويل", fmtDate(x.created_at), x.note || "", "", "", "", (-num(x.amount)).toFixed(3)])); L.push(["الرصيد", "", "", "", "", "", s.bal.toFixed(3)]); return "﻿" + L.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n"); };
+    const rows = A.list.filter((d) => d.merchant_id === id && d.status === "delivered"), pays = A.setl.filter((x) => x.kind === "merchant_payout" && x.party === id), s = merchantSt(id), m = A.profiles.find((p) => p.id === id) || {};
+    const fee = (d) => (d.fee_payer === "sender" ? num(d.fee) : 0), cod = rows.reduce((a, d) => a + num(d.cod_amount), 0), fees = rows.reduce((a, d) => a + fee(d), 0);
+    const H = ["رقم", "تاريخ التسليم", "المستلم", "المنطقة", "التحصيل", "التوصيل على المحل", "الصافي"], R = rows.map((d) => [d.no, fmtDate(d.delivered_at), d.receiver_name, d.drop_area, f3(d.cod_amount), f3(fee(d)), f3(num(d.cod_amount) - fee(d))]);
     sheet(`<h3>📒 كشف حساب ${esc(pname(id))}</h3>
-      ${rows.map((d) => { const fee = d.fee_payer === "sender" ? num(d.fee) : 0; return `<div class="line"><span>#${d.no} · ${esc(d.drop_area)} · ${fmtDate(d.delivered_at)}</span><b>${money(num(d.cod_amount) - fee)}</b></div>`; }).join("") || `<p class="mut">مفيش شحنات اتسلمت</p>`}
+      ${rows.map((d) => `<div class="line"><span>#${d.no} · ${esc(d.drop_area)} · ${fmtDate(d.delivered_at)}</span><b>${money(num(d.cod_amount) - fee(d))}</b></div>`).join("") || `<p class="mut">مفيش شحنات اتسلمت</p>`}
       ${pays.map((x) => `<div class="line" style="color:#16a34a"><span>✅ تحويل ${fmtDate(x.created_at)} ${x.note ? esc(x.note) : ""} <button class="btn sm ghost" data-unset="${x.id}">🗑️</button></span><b>−${money(x.amount)}</b></div>`).join("")}
-      <div class="line total"><span>الرصيد</span><span>${money(s.bal)}</span></div><button class="btn ghost block" id="csvBtn">⬇️ تصدير Excel</button>`, () => {
-      $("csvBtn").onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv()], { type: "text/csv;charset=utf-8" })); a.download = "statement-" + pname(id) + ".csv"; a.click(); };
+      <div class="line total"><span>الرصيد</span><span>${money(s.bal)}</span></div><div class="acts"><button class="btn sm green" id="csvBtn">📊 Excel</button><button class="btn sm tq" id="pdfBtn">🧾 فاتورة PDF</button>${m.phone ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${esc(m.phone)}?text=${encodeURIComponent(`كشف حساب ${pname(id)}\nشحنات اتسلمت: ${rows.length}\nاتحصّل: ${cod.toFixed(3)} د.ك\nالتوصيل: ${fees.toFixed(3)} د.ك\nاتحوّل: ${s.paid.toFixed(3)} د.ك\nالرصيد: ${s.bal.toFixed(3)} د.ك`)}">💬 واتساب</a>` : ""}</div>`, () => {
+      $("csvBtn").onclick = () => UI.xlsx("كشف-" + pname(id), [["الشحنات", [H, ...R, ["الإجمالي", "", "", "", f3(cod), f3(fees), f3(cod - fees)]]], ["التحويلات", [["التاريخ", "ملاحظة", "المبلغ"], ...pays.map((x) => [fmtDate(x.created_at), x.note || "", f3(x.amount)])]], ["الملخص", [["البند", "المبلغ"], ["اتحصّل", f3(cod)], ["التوصيل", f3(fees)], ["اتحوّل", f3(s.paid)], ["الرصيد", f3(s.bal)]]]]).catch((e) => toast(e.message, "err"));
+      $("pdfBtn").onclick = () => UI.printDoc("كشف " + pname(id), `<h1>🧾 ${esc(A.settings.company_name || "Guten Delivery")} – كشف حساب</h1><div class="m">${esc(pname(id))}${m.phone ? " · " + esc(m.phone) : ""}</div>
+        <div class="k"><div>شحنات<b>${rows.length}</b></div><div>اتحصّل<b>${money(cod)}</b></div><div>التوصيل<b>${money(fees)}</b></div><div>اتحوّل<b>${money(s.paid)}</b></div><div>${s.bal >= 0 ? "ليه عندنا" : "عليه"}<b>${money(Math.abs(s.bal))}</b></div></div>
+        <h2>الشحنات</h2>${UI.tbl(H, R.map((r) => r.map((c, i) => (i >= 4 ? Number(c).toFixed(3) : c))), ["الإجمالي", "", "", "", cod.toFixed(3), fees.toFixed(3), (cod - fees).toFixed(3)])}${pays.length ? `<h2>التحويلات</h2>${UI.tbl(["التاريخ", "ملاحظة", "المبلغ"], pays.map((x) => [fmtDate(x.created_at), x.note || "", num(x.amount).toFixed(3)]))}` : ""}`);
     });
+  }
+  function revsSheet(id) {
+    const r = A.list.filter((d) => d.driver_id === id && d.rating).sort((a, b) => new Date(b.delivered_at || b.updated_at) - new Date(a.delivered_at || a.updated_at)), s = driverSt(id);
+    const dist = [5, 4, 3, 2, 1].map((n) => [n, r.filter((d) => d.rating === n).length]);
+    sheet(`<h3>⭐ تقييمات ${esc(pname(id))}</h3><div class="line total"><span>${s.avg ? UI.stars(s.avg, 16) + " " + s.avg : "لسه مفيش"}</span><span>${r.length} تقييم</span></div>
+      ${dist.map(([n, c]) => `<div class="line"><span>${"★".repeat(n)}</span><span style="flex:1;margin:0 8px;background:#e2e8f0;border-radius:6px;height:8px;overflow:hidden"><i style="display:block;height:100%;width:${r.length ? (c / r.length) * 100 : 0}%;background:#f59e0b"></i></span><b>${c}</b></div>`).join("")}
+      ${r.map((d) => `<div class="card" style="padding:8px"><div class="line"><span>${UI.stars(d.rating, 13)} #${d.no}</span><span class="mut">${fmtDate(d.delivered_at)}</span></div>${d.rating_note ? `<div>«${esc(d.rating_note)}»</div>` : ""}<div class="mut">${esc(d.receiver_name)} · ${esc(d.drop_area)}</div></div>`).join("")}`);
+  }
+  function dstmtSheet(id) {
+    const s = driverSt(id), rows = A.list.filter((d) => d.driver_id === id && d.status === "delivered"), mv = A.setl.filter((x) => x.party === id && ["driver_handover", "driver_payout"].includes(x.kind));
+    const H = ["رقم", "التاريخ", "المستلم", "المنطقة", "حصّل", "ربحه"], R = rows.map((d) => [d.no, fmtDate(d.delivered_at), d.receiver_name, d.drop_area, f3(collectOf(d)), f3(d.driver_earning)]);
+    UI.xlsx("محفظة-" + pname(id), [["الشحنات", [H, ...R, ["الإجمالي", "", "", "", f3(s.col), f3(s.earn)]]], ["الحركات", [["التاريخ", "النوع", "ملاحظة", "المبلغ"], ...mv.map((x) => [fmtDate(x.created_at), x.kind === "driver_handover" ? "سلّم كاش" : "اتصرفله أرباح", x.note || "", f3(x.amount)])]], ["الملخص", [["البند", "المبلغ"], ["حصّل", f3(s.col)], ["سلّم", f3(s.hand)], ["أرباحه", f3(s.earn)], ["اتصرفله", f3(s.paid)], [s.bal >= 0 ? "عليه" : "ليه", f3(Math.abs(s.bal))]]]]).catch((e) => toast(e.message, "err"));
   }
 
   // ---------- الأسعار ----------
   function prices() {
     const get = (a, b) => { const p = A.prices.find((x) => x.from_zone === a && x.to_zone === b) || A.prices.find((x) => x.from_zone === b && x.to_zone === a); return p ? num(p.price) : ""; };
-    return `<div class="card" style="margin-top:12px"><b>💰 سعر التوصيل بين المحافظات (د.ك)</b><p class="mut" style="font-size:13px">من (يمين) ← إلى (فوق). السعر بيتطبق في الاتجاهين.</p>
+    const st = A.settings, km = st.price_mode === "km", pf = (k, l, v) => `<label class="f"><span>${l}</span><input class="in" type="number" step="0.005" min="0" inputmode="decimal" data-pm="${k}" value="${esc(st[k] == null ? v : st[k])}"></label>`;
+    const ex = (a, b) => { const A1 = UI.ZLL[a], A2 = UI.ZLL[b], k = a === b ? 0 : UI.km(A1, A2); let f = Math.max(num(st.min_fee), Math.round((num(st.base_fee) + num(st.per_km) * k) * 4) / 4); if (num(st.max_fee) > 0) f = Math.min(f, num(st.max_fee)); return `${a} ← ${b}: ${k.toFixed(0)} كم = <b>${money(f)}</b>`; };
+    return `<div class="card" style="margin-top:12px"><b>⚙️ طريقة حساب السعر</b>
+      <label class="radio"><input type="radio" name="pmode" value="zone" ${!km ? "checked" : ""}> 🗺️ حسب المحافظة (الجدول تحت)</label><label class="radio"><input type="radio" name="pmode" value="km" ${km ? "checked" : ""}> 📏 حسب المسافة (كيلو)</label>
+      <div class="row2">${pf("base_fee", "سعر فتح الطلب", 1)}${pf("per_km", "سعر الكيلو", 0.1)}</div><div class="row2">${pf("min_fee", "أقل سعر", 1)}${pf("max_fee", "أعلى سعر (اختياري)", "")}</div>
+      ${km ? `<p class="mut" style="font-size:13px">أمثلة: ${ex("العاصمة", "حولي")}<br>${ex("العاصمة", "الجهراء")}<br>${ex("الأحمدي", "الجهراء")}</p>` : `<p class="mut" style="font-size:13px">المسافة بتتحسب بين مراكز المحافظات وبتتقرّب لأقرب ربع دينار.</p>`}
+      <button class="btn tq block" id="savePM">💾 حفظ طريقة الحساب</button></div>
+      <div class="card" style="${km ? "opacity:.55" : ""}"><b>💰 سعر التوصيل بين المحافظات (د.ك)</b>${km ? ` <span class="pill">مش مستخدم دلوقتي</span>` : ""}<p class="mut" style="font-size:13px">من (يمين) ← إلى (فوق). السعر بيتطبق في الاتجاهين.</p>
       <div style="overflow-x:auto"><table class="grid-p"><tr><th></th>${ZONES.map((z) => `<th>${z}</th>`).join("")}</tr>
       ${ZONES.map((a, i) => `<tr><th>${a}</th>${ZONES.map((b, j) => `<td>${j < i ? `<span class="mut">↖</span>` : `<input type="number" step="0.25" inputmode="decimal" data-pa="${a}" data-pb="${b}" value="${get(a, b)}">`}</td>`).join("")}</tr>`).join("")}</table></div>
       <div class="row2" style="margin-top:10px"><input class="in" id="allP" type="number" step="0.25" inputmode="decimal" placeholder="سعر موحّد للكل"><button class="btn ghost" id="allBtn">طبّق على الكل</button></div>
@@ -207,7 +285,7 @@
     } catch (err) { toast(err.message, "err"); }
   });
   document.addEventListener("click", async (e) => {
-    const el = e.target.closest("[data-tab],[data-filter],[data-newd],[data-proof],[data-fee],[data-wa],[data-del],[data-pay],[data-hand],[data-dpay],[data-stmt],[data-unset],[data-adddrv],#saveP,#allBtn,#saveS,#resetDemo"); if (!el) return;
+    const el = e.target.closest("[data-tab],[data-filter],[data-newd],[data-proof],[data-fee],[data-wa],[data-del],[data-pay],[data-hand],[data-dpay],[data-stmt],[data-unset],[data-adddrv],[data-revs],[data-dstmt],#savePM,#saveP,#allBtn,#saveS,#resetDemo"); if (!el) return;
     const ds = el.dataset;
     try {
       if (ds.tab) { closeSheet(); A.tab = ds.tab; render(); scrollTo(0, 0); }
@@ -221,6 +299,9 @@
       else if (ds.hand) moneySheet("driver_handover", ds.hand);
       else if (ds.dpay) moneySheet("driver_payout", ds.dpay);
       else if (ds.stmt) stmtSheet(ds.stmt);
+      else if (ds.revs) revsSheet(ds.revs);
+      else if (ds.dstmt) dstmtSheet(ds.dstmt);
+      else if (el.id === "savePM") { const s = { price_mode: (document.querySelector("input[name=pmode]:checked") || {}).value || "zone" }; document.querySelectorAll("[data-pm]").forEach((i) => (s[i.dataset.pm] = i.value === "" ? null : num(i.value))); await Store.saveSettings(s); toast("اتحفظ ✓"); await load(); }
       else if (ds.unset) { if (!(await ask("حذف التحويل ده؟"))) return; await Store.deleteSettlement(ds.unset); closeSheet(); await load(); }
       else if (ds.adddrv) { await Store.saveProfile({ full_name: "مندوب " + (drivers().length + 1), phone: "9659999000" + (drivers().length + 3), role: "driver" }); await load(); }
       else if (el.id === "allBtn") { const v = $("allP").value; document.querySelectorAll("[data-pa]").forEach((i) => (i.value = v)); }
